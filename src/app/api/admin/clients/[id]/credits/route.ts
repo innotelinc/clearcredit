@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireAdminUser } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/errors";
+import { recordCreditChange } from "@/lib/credits";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     await requireAdminUser(request);
 
-    const body = await request.json();
-    const { amount, reason } = body;
+    const body = (await request.json()) as { amount?: number; reason?: string };
+    const amount = Number(body.amount);
 
     if (!Number.isInteger(amount) || amount === 0) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
@@ -20,24 +21,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const updated = await prisma.client.update({
-      where: { id },
-      data: {
-        disputeCredits: { increment: amount },
-      },
-    });
+    let updatedCredits = client.disputeCredits;
 
-    await prisma.activityLog.create({
-      data: {
+    await prisma.$transaction(async (tx) => {
+      const updatedClient = await recordCreditChange({
+        tx,
         clientId: id,
-        action: amount > 0 ? "CREDITS_ADDED" : "CREDITS_REMOVED",
-        details: `${Math.abs(amount)} credits ${amount > 0 ? "added" : "removed"} by admin${reason ? `: ${reason}` : ""}`,
-      },
+        amount: Math.abs(amount),
+        type: amount > 0 ? "credit" : "debit",
+        source: "ADMIN_ADJUSTMENT",
+        description: body.reason || "Admin credit adjustment",
+      });
+      updatedCredits = updatedClient.disputeCredits;
+
+      await tx.activityLog.create({
+        data: {
+          clientId: id,
+          action: amount > 0 ? "CREDITS_ADDED" : "CREDITS_REMOVED",
+          details: `${Math.abs(amount)} credits ${amount > 0 ? "added" : "removed"} by admin${body.reason ? `: ${body.reason}` : ""}`,
+        },
+      });
     });
 
     return NextResponse.json({
       success: true,
-      disputeCredits: updated.disputeCredits,
+      disputeCredits: updatedCredits,
       message: `${Math.abs(amount)} credits ${amount > 0 ? "added" : "removed"}`,
     });
   } catch (error: unknown) {

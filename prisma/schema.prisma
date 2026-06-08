@@ -72,6 +72,7 @@ model Client {
   contracts         ServiceContract[]
   invoices          Invoice[]
   activities        ActivityLog[]
+  creditTransactions CreditTransaction[]
 }
 
 model CreditReport {
@@ -184,4 +185,26 @@ model ActivityLog {
 
   user      User?    @relation(fields: [userId], references: [id])
   client    Client?  @relation(fields: [clientId], references: [id])
+}
+
+model CreditTransaction {
+  id              String   @id @default(cuid())
+  clientId        String
+  amount          Int
+  type            String
+  source          String
+  description     String?
+  stripeEventId   String?
+  stripeInvoiceId String?
+  stripeSessionId String?
+  createdAt       DateTime @default(now())
+
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model StripeWebhookEvent {
+  id          String   @id
+  type        String
+  summary     String?
+  processedAt DateTime @default(now())
 }

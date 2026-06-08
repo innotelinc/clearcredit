@@ -1,150 +1,115 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, DISPUTE_PACKAGES, SUBSCRIPTION_PLANS } from "@/lib/stripe";
+import { stripe, getDisputePackage, getSubscriptionPlan, isConfiguredStripePriceId } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
-import { getRequestUser, canAccessClient } from "@/lib/access-control";
-import { getErrorMessage } from "@/lib/errors";
+import { assertCanAccessClient, requireRequestUser } from "@/lib/access-control";
 import { buildPublicUrl, getPublicOrigin } from "@/lib/url";
+import { getErrorMessage } from "@/lib/errors";
 
-type CheckoutBody = {
-  email?: string;
-  name?: string;
-  package?: keyof typeof DISPUTE_PACKAGES;
-  plan?: keyof typeof SUBSCRIPTION_PLANS;
-  clientId?: string;
-  successUrl?: string;
-  cancelUrl?: string;
-};
-
-function normalizeRedirectUrl(url: string | undefined, request: NextRequest, fallbackPath: string): string | null {
-  const publicOrigin = getPublicOrigin(request);
-
-  if (!url) {
-    return buildPublicUrl(fallbackPath, request);
+function normalizePath(path: string, request: NextRequest) {
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    const absolute = new URL(path);
+    const publicOrigin = getPublicOrigin(request);
+    if (absolute.origin !== publicOrigin) {
+      throw new Error("Invalid redirect origin");
+    }
+    return absolute.toString();
   }
 
-  if (url.startsWith("/") && !url.startsWith("//")) {
-    return buildPublicUrl(url, request);
-  }
-
-  try {
-    const parsed = new URL(url);
-    return parsed.origin === publicOrigin ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
+  return buildPublicUrl(path.startsWith("/") ? path : `/${path}`, request);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as CheckoutBody;
-    const { email, name, package: pkg, plan, clientId, successUrl, cancelUrl } = body;
+    const user = await requireRequestUser(request);
+    const body = (await request.json()) as {
+      email?: string;
+      name?: string;
+      clientId?: string;
+      package?: string;
+      plan?: string;
+      successUrl?: string;
+      cancelUrl?: string;
+    };
 
-    if (!clientId || !email) {
-      return NextResponse.json({ error: "Client ID and email are required" }, { status: 400 });
+    if (!body.clientId) {
+      return NextResponse.json({ error: "Client ID is required" }, { status: 400 });
     }
 
-    const successRedirect = normalizeRedirectUrl(successUrl, request, "/client/dashboard?success=true");
-    if (!successRedirect) {
-      return NextResponse.json({ error: "Invalid success URL" }, { status: 400 });
-    }
+    assertCanAccessClient(user, body.clientId);
 
-    const cancelRedirect = normalizeRedirectUrl(cancelUrl, request, "/signup?canceled=true");
-    if (!cancelRedirect) {
-      return NextResponse.json({ error: "Invalid cancel URL" }, { status: 400 });
-    }
-
-    const isPackage = pkg ? Boolean(DISPUTE_PACKAGES[pkg]) : false;
-    const isPlan = plan ? Boolean(SUBSCRIPTION_PLANS[plan]) : false;
-
-    if (!isPackage && !isPlan) {
-      return NextResponse.json({ error: "Invalid package or plan" }, { status: 400 });
-    }
-
-    const client = await prisma.client.findUnique({
-      where: { id: clientId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        businessId: true,
-        userId: true,
-        stripeCustomerId: true,
-      },
-    });
-
+    const client = await prisma.client.findUnique({ where: { id: body.clientId } });
     if (!client) {
       return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
 
-    const requestUser = await getRequestUser(request);
+    const successUrl = normalizePath(body.successUrl || "/client/dashboard?success=true", request);
+    const cancelUrl = normalizePath(body.cancelUrl || "/client/billing?canceled=true", request);
 
-    if (requestUser) {
-      if (!canAccessClient(requestUser, client.id)) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-    } else {
-      const matchesClientIdentity = client.email.toLowerCase() === email.toLowerCase();
-      if (!matchesClientIdentity || client.stripeCustomerId) {
-        return NextResponse.json({ error: "Authentication required for this checkout session" }, { status: 401 });
-      }
-    }
-
-    let customerId = client.stripeCustomerId ?? undefined;
-
-    if (!customerId) {
+    let stripeCustomerId = client.stripeCustomerId;
+    if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
-        email,
-        name: name || client.name || undefined,
-        metadata: { clientId: client.id },
+        email: body.email || client.email,
+        name: body.name || client.name,
+        metadata: { clientId: client.id, businessId: client.businessId },
       });
-      customerId = customer.id;
-
+      stripeCustomerId = customer.id;
       await prisma.client.update({
         where: { id: client.id },
-        data: { stripeCustomerId: customerId },
+        data: { stripeCustomerId },
       });
     }
 
-    const session = isPackage
-      ? await stripe.checkout.sessions.create({
-          customer: customerId,
-          line_items: [
-            {
-              price_data: {
-                currency: "usd",
-                product_data: { name: `ClearCredit ${DISPUTE_PACKAGES[pkg!].name} — ${DISPUTE_PACKAGES[pkg!].disputes} Disputes` },
-                unit_amount: DISPUTE_PACKAGES[pkg!].amount,
-              },
-              quantity: 1,
-            },
-          ],
-          mode: "payment",
-          success_url: successRedirect,
-          cancel_url: cancelRedirect,
-          metadata: { clientId: client.id, package: pkg!, disputes: String(DISPUTE_PACKAGES[pkg!].disputes), type: "package" },
-        })
-      : await stripe.checkout.sessions.create({
-          customer: customerId,
-          line_items: [
-            {
-              price_data: {
-                currency: "usd",
-                product_data: { name: `ClearCredit ${SUBSCRIPTION_PLANS[plan!].name} — ${SUBSCRIPTION_PLANS[plan!].disputes} Disputes/mo` },
-                unit_amount: SUBSCRIPTION_PLANS[plan!].amount,
-                recurring: { interval: "month" },
-              },
-              quantity: 1,
-            },
-          ],
-          mode: "subscription",
-          success_url: successRedirect,
-          cancel_url: cancelRedirect,
-          metadata: { clientId: client.id, plan: plan!, disputes: String(SUBSCRIPTION_PLANS[plan!].disputes), type: "subscription" },
-        });
+    const pkg = body.package ? getDisputePackage(body.package) : null;
+    const plan = body.plan ? getSubscriptionPlan(body.plan) : null;
 
-    return NextResponse.json({ sessionId: session.id, url: session.url });
+    if (!pkg && !plan) {
+      return NextResponse.json({ error: "A valid package or subscription plan is required" }, { status: 400 });
+    }
+
+    const isSubscription = Boolean(plan);
+    const selected = plan || pkg;
+    if (!selected) {
+      return NextResponse.json({ error: "Unable to resolve Stripe product" }, { status: 400 });
+    }
+
+    const lineItem = isConfiguredStripePriceId(selected.priceId)
+      ? { price: selected.priceId, quantity: 1 }
+      : {
+          price_data: {
+            currency: "usd",
+            unit_amount: selected.amount,
+            product_data: {
+              name: selected.name,
+              description: isSubscription
+                ? `${selected.disputes} dispute credits per billing cycle`
+                : `${selected.disputes} dispute credits`,
+            },
+            recurring: isSubscription ? { interval: "month" as const } : undefined,
+          },
+          quantity: 1,
+        };
+
+    const session = await stripe.checkout.sessions.create({
+      mode: isSubscription ? "subscription" : "payment",
+      customer: stripeCustomerId,
+      customer_update: { address: "auto", name: "auto" },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      line_items: [lineItem],
+      metadata: {
+        clientId: client.id,
+        type: isSubscription ? "subscription" : "package",
+        package: body.package || "",
+        plan: body.plan || "",
+        disputes: String(selected.disputes),
+      },
+    });
+
+    return NextResponse.json({ url: session.url, sessionId: session.id });
   } catch (error: unknown) {
     console.error("Stripe checkout error:", error);
-    return NextResponse.json({ error: getErrorMessage(error, "Failed to create checkout session") }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to start checkout");
+    const status = error instanceof Error && message === "Invalid redirect origin" ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

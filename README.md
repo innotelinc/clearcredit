@@ -1,180 +1,81 @@
 # ClearCredit
 
-ClearCredit is an AI-assisted credit repair platform built with Next.js, Prisma, NextAuth, and Stripe. It helps credit repair businesses and their clients analyze reports, generate FCRA-style dispute letters, manage billing, and track dispute progress from intake to resolution.
+[![CI](https://github.com/innotelinc/clearcredit/actions/workflows/ci.yml/badge.svg)](https://github.com/innotelinc/clearcredit/actions/workflows/ci.yml)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?logo=prisma)](https://www.prisma.io/)
+[![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)](https://stripe.com/)
 
-**Live site:** https://subscribe.innotel.us  
-**Repository:** https://github.com/innotelinc/clearcredit
+AI-assisted credit repair platform built with Next.js, Prisma, NextAuth, and Stripe. ClearCredit gives admins and clients a shared workspace for onboarding, contracts, credit report ingestion, AI-generated disputes, billing, and ongoing case management.
 
-## Features
+![ClearCredit social preview](public/repo-social-preview.svg)
 
-- AI-assisted credit report analysis
-- Dispute item tracking and status management
-- FCRA-oriented dispute letter generation
-- Client and admin dashboards
-- Stripe checkout, subscriptions, invoices, and billing portal
-- Role-based access control for admins and clients
-- Prisma-backed data layer
-- Seed script for creating an admin user quickly
+## Live Site
+- App: https://subscribe.innotel.us
+- Repo: https://github.com/innotelinc/clearcredit
 
-## Tech Stack
+## Core Features
+- Multi-step client signup with authorization and contract capture
+- Role-based admin and client dashboards
+- Credit report upload and AI-assisted dispute generation
+- Dispute-credit accounting for packages, subscriptions, and admin adjustments
+- Stripe checkout, billing portal, and webhook handling
+- Service contracts, invoices, activity logs, and client management
+- Admin settings interface and automation status visibility
 
-- **Framework:** Next.js 16 (App Router)
-- **Language:** TypeScript
-- **Auth:** NextAuth
-- **Database:** Prisma + SQLite
-- **Payments:** Stripe
-- **Email:** Resend
-- **AI integration:** OpenAI
-- **Testing:** Vitest
-- **UI:** React + Tailwind CSS + Radix UI
-
-## Main App Areas
-
-### Public
-- Landing page
-- Signup flow
-- Login
-
-### Client
-- Dashboard
-- Billing
-- Disputes
-- Messages
-
-### Admin
-- Dashboard
-- Clients
-- Client detail views
-- Disputes
-- Contracts
-- Billing
-- Settings
-
-### API
-Key route groups include:
-- `/api/auth/*`
-- `/api/clients`
-- `/api/disputes`
-- `/api/contracts`
-- `/api/reports`
-- `/api/stats`
-- `/api/invoices`
-- `/api/stripe/checkout`
-- `/api/stripe/portal`
-- `/api/stripe/webhook`
-
-## Local Development
-
-### 1. Install dependencies
+## Local Setup
 ```bash
 npm install
-```
-
-### 2. Configure environment variables
-Create a `.env` file with the values your environment needs.
-
-Required variables used by the app include:
-
-```env
-DATABASE_URL="file:./dev.db"
-NEXTAUTH_SECRET="replace-with-a-secure-random-secret"
-NEXTAUTH_URL="https://subscribe.innotel.us"
-PUBLIC_APP_URL="https://subscribe.innotel.us"
-STRIPE_SECRET_KEY="sk_..."
-STRIPE_WEBHOOK_SECRET="whsec_..."
-RESEND_API_KEY="re_..."
-FROM_EMAIL="onboarding@resend.dev"
-OPENAI_API_KEY="..."
-```
-
-## Database setup
-
-Generate Prisma client:
-```bash
 npx prisma generate
-```
-
-Apply schema to the local SQLite database:
-```bash
 npx prisma db push
-```
-
-## Seed an admin user
-
-Create or update the default admin:
-```bash
 npm run seed:admin
-```
-
-Default seeded credentials:
-- **Email:** `admin@clearcredit.local`
-- **Password:** `ClearCreditAdmin!2026`
-
-You can override them:
-```bash
-ADMIN_EMAIL=you@example.com \
-ADMIN_PASSWORD='StrongPasswordHere' \
-ADMIN_NAME='Your Name' \
-ADMIN_BUSINESS_NAME='Your Company' \
-ADMIN_BUSINESS_ID='default' \
-npm run seed:admin
-```
-
-## Run the app
-
-Development:
-```bash
 npm run dev
 ```
 
-Production build:
-```bash
-npm run build
-npm start
+## Required Environment
+```env
+DATABASE_URL=file:./dev.db
+NEXTAUTH_SECRET=replace-me
+NEXTAUTH_URL=http://localhost:3000
+PUBLIC_APP_URL=http://localhost:3000
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+OPENAI_API_KEY=sk-...
 ```
 
-## Testing and Validation
-
-Run lint:
+## Useful Commands
 ```bash
 npm run lint
-```
-
-Run tests:
-```bash
 npm test
-```
-
-Run typecheck:
-```bash
 npx tsc --noEmit
+npm run build
+npm run seed:admin
 ```
 
 ## Stripe Webhook
-
-Production webhook endpoint:
+Endpoint:
 ```text
 https://subscribe.innotel.us/api/stripe/webhook
 ```
 
-Recommended subscribed events:
+Subscribe to:
 - `checkout.session.completed`
 - `invoice.payment_succeeded`
 - `invoice.payment_failed`
 - `customer.subscription.deleted`
 
-## Security Notes
+## Automation Notes
+- Uploaded credit reports can be analyzed into disputes automatically.
+- Automatic report pulling is wired behind `/api/reports/pull`.
+- For local/demo automation, set `REPORT_PULL_MODE=mock`.
+- A real production auto-pull flow still requires a connected third-party report provider and its credentials.
 
-This repository includes role-based access-control fixes for protected API routes and tighter Stripe redirect validation. Keep production secrets out of git and rotate any secret that has ever been exposed.
-
-## Current Status
-
-The app currently passes:
-- `npm run lint`
-- `npm test`
-- `npx tsc --noEmit`
-- `npm run build`
+## CI
+GitHub Actions validates:
+- lint
+- tests
+- typecheck
+- production build
 
 ## License
-
-No license file has been added yet. If you want this repository to be open for reuse, add an explicit license.
+MIT

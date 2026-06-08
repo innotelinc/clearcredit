@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, ArrowUpRight, Download, Calendar, AlertCircle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ArrowUpRight, AlertCircle, Sparkles, Package } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,17 +23,30 @@ interface ClientData {
   email: string;
   subscriptionStatus: string;
   stripeCustomerId: string | null;
-  stripeSubscriptionId: string | null;
   subscriptionPlan: string | null;
   disputeCredits: number;
   disputePackage: string | null;
   invoices: Invoice[];
 }
 
+const packages = [
+  { key: "basic", name: "Basic", price: "$149", credits: 3 },
+  { key: "standard", name: "Standard", price: "$299", credits: 7 },
+  { key: "premium", name: "Premium", price: "$499", credits: 15 },
+];
+
+const subscriptions = [
+  { key: "basic_monthly", name: "Basic Monthly", price: "$49/mo", credits: 3 },
+  { key: "standard_monthly", name: "Standard Monthly", price: "$99/mo", credits: 7 },
+  { key: "premium_monthly", name: "Premium Monthly", price: "$149/mo", credits: 15 },
+];
+
 export default function ClientBillingPage() {
   const [client, setClient] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     fetch("/api/me")
@@ -47,136 +60,139 @@ export default function ClientBillingPage() {
       .catch(() => setLoading(false));
   }, []);
 
+  async function startCheckout(kind: "package" | "subscription", key: string) {
+    if (!client) return;
+    setCheckoutLoading(`${kind}:${key}`);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: client.email,
+          name: client.name,
+          clientId: client.id,
+          package: kind === "package" ? key : undefined,
+          plan: kind === "subscription" ? key : undefined,
+          successUrl: "/client/dashboard?success=true",
+          cancelUrl: "/client/billing?canceled=true",
+        }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to start checkout");
+      if (payload.url) {
+        window.location.assign(payload.url);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to start checkout");
+    } finally {
+      setCheckoutLoading(null);
+    }
+  }
+
   async function openPortal() {
     setPortalLoading(true);
     try {
       const res = await fetch("/api/stripe/portal", { method: "POST" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to open portal");
       if (data.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
       }
     } catch (error) {
-      console.error("Portal error:", error);
+      setMessage(error instanceof Error ? error.message : "Failed to open billing portal");
     } finally {
       setPortalLoading(false);
     }
   }
 
-  const statusColor = (status: string) => {
-    switch (status) {
-      case "PAID": return "success";
-      case "DRAFT": return "warning";
-      case "OVERDUE": return "danger";
-      default: return "default";
-    }
-  };
-
-  const credits = client?.disputeCredits ?? 0;
-  const pkgName = client?.disputePackage || "None";
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
         <ClientHeader />
-        <main className="mx-auto max-w-5xl px-4 py-8">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 w-48 rounded bg-muted" />
-            <div className="h-64 rounded-xl bg-muted" />
-          </div>
+        <main className="mx-auto max-w-6xl px-4 py-8">
+          <div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-muted" /><div className="h-64 rounded-xl bg-muted" /></div>
         </main>
       </div>
     );
   }
 
+  const credits = client?.disputeCredits ?? 0;
+
   return (
     <div className="min-h-screen bg-background">
       <ClientHeader />
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-8">
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
+        <div>
           <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Manage your dispute packages and payment history</p>
+          <p className="mt-1 text-sm text-muted-foreground">Manage dispute credits, subscriptions, and payment history.</p>
         </div>
 
-        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Dispute Credits</p>
-                  <p className="text-xl font-bold">{credits} remaining</p>
-                </div>
-                <Badge variant={credits > 0 ? "success" : "warning"}>{credits > 0 ? "Active" : "No Credits"}</Badge>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{client?.subscriptionPlan ? "Subscription" : "Current Package"}</p>
-                  <p className="text-xl font-bold">
-                    {client?.subscriptionPlan
-                      ? client.subscriptionPlan.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
-                      : pkgName === "None"
-                        ? "—"
-                        : pkgName.charAt(0).toUpperCase() + pkgName.slice(1)}
-                  </p>
-                </div>
-                <CreditCard className="h-8 w-8 text-primary opacity-80" />
-              </div>
-              {client?.subscriptionPlan && (
-                <div className="mt-2 text-xs text-muted-foreground">Renews monthly • {client.subscriptionStatus === "active" ? "Active" : client.subscriptionStatus}</div>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center justify-center p-6">
-              <Button
-                onClick={() => {
-                  const pkg = client?.disputePackage || "standard";
-                  fetch("/api/stripe/checkout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      email: client?.email,
-                      name: client?.name,
-                      package: pkg,
-                      clientId: client?.id,
-                      successUrl: "/client/dashboard?success=true",
-                      cancelUrl: "/client/billing?canceled=true",
-                    }),
-                  })
-                    .then((response) => response.json())
-                    .then((data) => {
-                      if (data.url) window.location.href = data.url;
-                    })
-                    .catch(() => alert("Failed to start checkout. Please try again."));
-                }}
-                className="w-full"
-              >
-                <CreditCard className="mr-2 h-4 w-4" />
-                Buy More Credits
-              </Button>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center justify-center p-6">
-              <Button onClick={openPortal} isLoading={portalLoading} variant="outline" className="w-full"><ArrowUpRight className="mr-2 h-4 w-4" />Manage Payment Methods</Button>
-            </CardContent>
-          </Card>
+        {message ? <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">{message}</div> : null}
+
+        <div className="grid gap-6 md:grid-cols-4">
+          <Card><CardContent className="p-6"><p className="text-sm text-muted-foreground">Dispute Credits</p><p className="mt-1 text-3xl font-bold">{credits}</p></CardContent></Card>
+          <Card><CardContent className="p-6"><p className="text-sm text-muted-foreground">Current Package</p><p className="mt-1 text-xl font-semibold">{client?.disputePackage || "None"}</p></CardContent></Card>
+          <Card><CardContent className="p-6"><p className="text-sm text-muted-foreground">Subscription</p><p className="mt-1 text-xl font-semibold">{client?.subscriptionPlan || "None"}</p></CardContent></Card>
+          <Card><CardContent className="p-6"><Button onClick={openPortal} isLoading={portalLoading} variant="outline" className="w-full"><ArrowUpRight className="h-4 w-4" />Manage payment methods</Button></CardContent></Card>
         </div>
 
-        {credits === 0 && (
-          <div className="mb-6 flex items-center gap-3 rounded-lg bg-warning/10 p-4 text-warning">
+        {credits === 0 ? (
+          <div className="flex items-center gap-3 rounded-lg bg-warning/10 p-4 text-warning">
             <AlertCircle className="h-5 w-5" />
-            <p className="text-sm font-medium">You have no dispute credits left. Purchase a new package to continue filing disputes.</p>
+            <p className="text-sm font-medium">You have no dispute credits left. Purchase a package or renew a subscription to continue automation.</p>
           </div>
-        )}
+        ) : null}
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5 text-primary" />One-time dispute packages</CardTitle>
+              <CardDescription>Best when you want to top up credits immediately.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              {packages.map((pkg) => (
+                <div key={pkg.key} className="rounded-xl border border-border p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{pkg.name}</p>
+                    <Badge variant="outline">{pkg.credits} credits</Badge>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold">{pkg.price}</p>
+                  <Button className="mt-4 w-full" onClick={() => startCheckout("package", pkg.key)} isLoading={checkoutLoading === `package:${pkg.key}`}>
+                    Buy package
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Monthly automation plans</CardTitle>
+              <CardDescription>Recurring billing with credits added every billing cycle.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              {subscriptions.map((plan) => (
+                <div key={plan.key} className="rounded-xl border border-border p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold">{plan.name}</p>
+                    <Badge variant="outline">{plan.credits}/mo</Badge>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold">{plan.price}</p>
+                  <Button className="mt-4 w-full" variant="secondary" onClick={() => startCheckout("subscription", plan.key)} isLoading={checkoutLoading === `subscription:${plan.key}`}>
+                    Start plan
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Payment History</CardTitle>
-            <CardDescription>Invoices and payments for your account</CardDescription>
+            <CardDescription>Invoices and charges processed through Stripe.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -190,16 +206,14 @@ export default function ClientBillingPage() {
               </TableHeader>
               <TableBody>
                 {!client?.invoices?.length ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No invoices yet. They will appear here once payments are processed.</TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No invoices yet.</TableCell></TableRow>
                 ) : (
                   client.invoices.map((invoice) => (
                     <TableRow key={invoice.id}>
-                      <TableCell><div className="flex items-center gap-2"><Download className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{invoice.description || "Subscription"}</span></div></TableCell>
-                      <TableCell className="font-medium">${Number.parseFloat(invoice.amount || "0").toFixed(2)}</TableCell>
-                      <TableCell><Badge variant={statusColor(invoice.status)}>{invoice.status}</Badge></TableCell>
-                      <TableCell className="text-sm text-muted-foreground"><div className="flex items-center gap-2"><Calendar className="h-3 w-3" />{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString() : new Date(invoice.createdAt).toLocaleDateString()}</div></TableCell>
+                      <TableCell>{invoice.description || "Stripe invoice"}</TableCell>
+                      <TableCell>${Number.parseFloat(invoice.amount || "0").toFixed(2)}</TableCell>
+                      <TableCell><Badge variant={invoice.status === "PAID" ? "success" : "warning"}>{invoice.status}</Badge></TableCell>
+                      <TableCell>{new Date(invoice.paidAt || invoice.createdAt).toLocaleDateString()}</TableCell>
                     </TableRow>
                   ))
                 )}
