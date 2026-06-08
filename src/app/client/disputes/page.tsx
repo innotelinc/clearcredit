@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText, CheckCircle2, AlertCircle, Clock, XCircle, Wand2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientHeader } from "@/components/layout/client-header";
 
@@ -26,7 +26,7 @@ export default function ClientDisputesPage() {
 
   useEffect(() => {
     fetch("/api/me")
-      .then((r) => r.json())
+      .then((response) => response.json())
       .then((data) => {
         if (data.client?.disputes) {
           setDisputes(data.client.disputes);
@@ -60,10 +60,7 @@ export default function ClientDisputesPage() {
       <div className="min-h-screen bg-background">
         <ClientHeader />
         <main className="mx-auto max-w-5xl px-4 py-8">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 w-48 bg-muted rounded" />
-            <div className="h-64 bg-muted rounded-xl" />
-          </div>
+          <div className="animate-pulse space-y-4"><div className="h-8 w-48 rounded bg-muted" /><div className="h-64 rounded-xl bg-muted" /></div>
         </main>
       </div>
     );
@@ -75,15 +72,13 @@ export default function ClientDisputesPage() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">My Disputes</h1>
-          <p className="text-sm text-muted-foreground mt-1">Track the status of your credit disputes and view generated letters</p>
+          <p className="mt-1 text-sm text-muted-foreground">Track the status of your credit disputes and view generated letters</p>
         </div>
 
         {disputes.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
-                <FileText className="h-6 w-6 text-muted-foreground" />
-              </div>
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted"><FileText className="h-6 w-6 text-muted-foreground" /></div>
               <p className="text-sm text-muted-foreground">No disputes yet. Disputes will appear here once your credit report is analyzed.</p>
             </CardContent>
           </Card>
@@ -93,62 +88,28 @@ export default function ClientDisputesPage() {
               <Card key={dispute.id} className="overflow-hidden">
                 <CardContent className="p-0">
                   <div className="p-6">
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="mb-4 flex items-start justify-between">
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline">{dispute.bureau}</Badge>
-                          <Badge variant={statusColor(dispute.status)}>
-                            <span className="flex items-center gap-1">
-                              {statusIcon(dispute.status)}
-                              {dispute.status.replace("_", " ")}
-                            </span>
-                          </Badge>
-                        </div>
+                        <div className="mb-1 flex items-center gap-2"><Badge variant="outline">{dispute.bureau}</Badge><Badge variant={statusColor(dispute.status)}><span className="flex items-center gap-1">{statusIcon(dispute.status)}{dispute.status.replace("_", " ")}</span></Badge></div>
                         <h3 className="text-lg font-semibold">{dispute.type}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{dispute.description}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{dispute.description}</p>
                       </div>
-                      {dispute.confidenceScore && (
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground">AI Confidence</p>
-                          <p className="text-lg font-bold text-primary">{dispute.confidenceScore}%</p>
-                        </div>
-                      )}
+                      {dispute.confidenceScore && <div className="text-right"><p className="text-xs text-muted-foreground">AI Confidence</p><p className="text-lg font-bold text-primary">{dispute.confidenceScore}%</p></div>}
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mb-4">
-                      <div className="rounded-lg bg-muted/50 p-3">
-                        <p className="text-xs text-muted-foreground">Creditor</p>
-                        <p className="text-sm font-medium">{dispute.creditor || "—"}</p>
-                      </div>
-                      <div className="rounded-lg bg-muted/50 p-3">
-                        <p className="text-xs text-muted-foreground">Account</p>
-                        <p className="text-sm font-medium">{dispute.accountNumber || "—"}</p>
-                      </div>
-                      <div className="rounded-lg bg-muted/50 p-3">
-                        <p className="text-xs text-muted-foreground">Amount</p>
-                        <p className="text-sm font-medium">{dispute.amount || "—"}</p>
-                      </div>
+                    <div className="mb-4 grid grid-cols-3 gap-4">
+                      <div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">Creditor</p><p className="text-sm font-medium">{dispute.creditor || "—"}</p></div>
+                      <div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">Account</p><p className="text-sm font-medium">{dispute.accountNumber || "—"}</p></div>
+                      <div className="rounded-lg bg-muted/50 p-3"><p className="text-xs text-muted-foreground">Amount</p><p className="text-sm font-medium">{dispute.amount || "—"}</p></div>
                     </div>
 
                     {dispute.letters.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Generated Letters</p>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Generated Letters</p>
                         {dispute.letters.map((letter) => (
                           <div key={letter.id} className="rounded-lg border border-border bg-muted/20 p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Wand2 className="h-4 w-4 text-primary" />
-                                <span className="text-sm font-medium">{letter.templateType.replace("_", " ")}</span>
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(letter.generatedAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className="rounded bg-muted/40 p-3 max-h-48 overflow-y-auto">
-                              <pre className="text-xs leading-relaxed whitespace-pre-wrap font-mono">
-                                {letter.content}
-                              </pre>
-                            </div>
+                            <div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-primary" /><span className="text-sm font-medium">{letter.templateType.replace("_", " ")}</span></div><span className="text-xs text-muted-foreground">{new Date(letter.generatedAt).toLocaleDateString()}</span></div>
+                            <div className="max-h-48 overflow-y-auto rounded bg-muted/40 p-3"><pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{letter.content}</pre></div>
                           </div>
                         ))}
                       </div>

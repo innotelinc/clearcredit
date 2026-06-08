@@ -14,8 +14,6 @@ import {
   Activity,
   Clock,
   BarChart3,
-  Sparkles,
-  Upload,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,8 +36,6 @@ interface Client {
   email: string;
   creditScore: number | null;
   status: string;
-  createdAt: string;
-  _count: { disputes: number };
 }
 
 interface Dispute {
@@ -47,7 +43,6 @@ interface Dispute {
   type: string;
   status: string;
   bureau: string;
-  createdAt: string;
   client: { name: string };
 }
 
@@ -55,8 +50,6 @@ interface ActivityItem {
   id: string;
   action: string;
   details: string | null;
-  createdAt: string;
-  client: { name: string } | null;
 }
 
 interface CreditReportItem {
@@ -79,17 +72,15 @@ export default function AdminDashboard() {
   });
   const [clients, setClients] = useState<Client[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [activities] = useState<ActivityItem[]>([]);
   const [reports, setReports] = useState<CreditReportItem[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [clientsRes, disputesRes, contractsRes, reportsRes] = await Promise.all([
+        const [clientsRes, disputesRes, reportsRes] = await Promise.all([
           fetch("/api/clients"),
           fetch("/api/disputes"),
-          fetch("/api/contracts"),
           fetch("/api/reports/admin"),
         ]);
 
@@ -99,41 +90,52 @@ export default function AdminDashboard() {
 
         if (Array.isArray(clientsData)) {
           setClients(clientsData.slice(0, 5));
-          setStats((s) => ({
-            ...s,
+          setStats((current) => ({
+            ...current,
             totalClients: clientsData.length,
-            activeDisputes: Array.isArray(disputesData) ? disputesData.filter((d: Dispute) => d.status !== "RESOLVED" && d.status !== "DELETED").length : 0,
+            activeDisputes: Array.isArray(disputesData)
+              ? disputesData.filter((dispute: Dispute) => dispute.status !== "RESOLVED" && dispute.status !== "DELETED").length
+              : 0,
             lettersGenerated: Array.isArray(disputesData) ? disputesData.length * 2 : 0,
-            monthlyRevenue: Array.isArray(clientsData) ? clientsData.length * 99 : 0,
+            monthlyRevenue: clientsData.length * 99,
           }));
         }
+
         if (Array.isArray(disputesData)) {
           setDisputes(disputesData.slice(0, 5));
         }
+
         if (reportsData && Array.isArray(reportsData.reports)) {
           setReports(reportsData.reports.slice(0, 5));
         }
       } catch (error) {
         console.error("Failed to fetch dashboard data", error);
-      } finally {
-        setLoading(false);
       }
     }
-    fetchData();
+
+    void fetchData();
   }, []);
 
   const statusColor = (status: string) => {
     switch (status) {
-      case "active": return "success";
-      case "pending": return "warning";
-      case "inactive": return "danger";
-      case "TO_DISPUTE": return "warning";
-      case "DRAFTING": return "primary";
-      case "SENT": return "primary";
-      case "RESPONSE_RECEIVED": return "warning";
-      case "RESOLVED": return "success";
-      case "DELETED": return "success";
-      default: return "default";
+      case "active":
+        return "success";
+      case "pending":
+        return "warning";
+      case "inactive":
+        return "danger";
+      case "TO_DISPUTE":
+        return "warning";
+      case "DRAFTING":
+      case "SENT":
+        return "primary";
+      case "RESPONSE_RECEIVED":
+        return "warning";
+      case "RESOLVED":
+      case "DELETED":
+        return "success";
+      default:
+        return "default";
     }
   };
 
@@ -147,32 +149,32 @@ export default function AdminDashboard() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="ml-64 flex-1">
         <AdminHeader />
         <main className="p-8">
           <div className="mb-8 flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-              <p className="text-sm text-muted-foreground mt-1">Overview of your credit repair business</p>
+              <p className="mt-1 text-sm text-muted-foreground">Overview of your credit repair business</p>
             </div>
             <div className="flex gap-3">
               <Link href="/admin/clients/new">
-                <Button variant="outline"><Plus className="h-4 w-4 mr-2" /> Add Client</Button>
+                <Button variant="outline"><Plus className="mr-2 h-4 w-4" /> Add Client</Button>
               </Link>
               <Link href="/admin/disputes">
-                <Button><ClipboardList className="h-4 w-4 mr-2" /> New Dispute</Button>
+                <Button><ClipboardList className="mr-2 h-4 w-4" /> New Dispute</Button>
               </Link>
             </div>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             {statCards.map((stat) => (
-              <Card key={stat.title} className="hover:shadow-md transition-shadow">
+              <Card key={stat.title} className="transition-shadow hover:shadow-md">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                      <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                      <p className="mt-1 text-2xl font-bold">{stat.value}</p>
                     </div>
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                       <stat.icon className="h-5 w-5 text-primary" />
@@ -180,21 +182,19 @@ export default function AdminDashboard() {
                   </div>
                   <div className="mt-4 flex items-center text-xs">
                     {stat.change >= 0 ? (
-                      <TrendingUp className="h-3 w-3 text-success mr-1" />
+                      <TrendingUp className="mr-1 h-3 w-3 text-success" />
                     ) : (
-                      <TrendingDown className="h-3 w-3 text-destructive mr-1" />
+                      <TrendingDown className="mr-1 h-3 w-3 text-destructive" />
                     )}
-                    <span className={stat.change >= 0 ? "text-success" : "text-destructive"}>
-                      {Math.abs(stat.change)}%
-                    </span>
-                    <span className="text-muted-foreground ml-1">{stat.changeLabel}</span>
+                    <span className={stat.change >= 0 ? "text-success" : "text-destructive"}>{Math.abs(stat.change)}%</span>
+                    <span className="ml-1 text-muted-foreground">{stat.changeLabel}</span>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3 mb-8">
+          <div className="mb-8 grid gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Recent Clients</CardTitle>
@@ -202,16 +202,16 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {clients.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
+                  <div className="py-8 text-center text-sm text-muted-foreground">
                     No clients yet. <Link href="/admin/clients/new" className="text-primary hover:underline">Add your first client</Link>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {clients.map((client) => (
-                      <div key={client.id} className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors">
+                      <div key={client.id} className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/30">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary font-medium text-sm">
-                            {client.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                            {client.name.split(" ").map((namePart) => namePart[0]).join("").toUpperCase()}
                           </div>
                           <div>
                             <p className="text-sm font-medium">{client.name}</p>
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2 mb-8">
+          <div className="mb-8 grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Credit Reports</CardTitle>
@@ -278,31 +278,23 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {reports.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
-                    No credit reports uploaded yet.
-                  </div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No credit reports uploaded yet.</div>
                 ) : (
                   <div className="space-y-3">
                     {reports.map((report) => (
-                      <div key={report.id} className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors">
+                      <div key={report.id} className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/30">
                         <div className="flex items-center gap-3">
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
                             <BarChart3 className="h-5 w-5 text-primary" />
                           </div>
                           <div>
                             <p className="text-sm font-medium">{report.bureau || "Credit Report"}</p>
-                            <p className="text-xs text-muted-foreground">{report.client.name} &bull; Score: {report.score || "N/A"}</p>
+                            <p className="text-xs text-muted-foreground">{report.client.name} • Score: {report.score || "N/A"}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {report.analyzedAt ? (
-                            <Badge variant="success">Analyzed</Badge>
-                          ) : (
-                            <Badge variant="warning">Pending</Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(report.createdAt).toLocaleDateString()}
-                          </span>
+                          {report.analyzedAt ? <Badge variant="success">Analyzed</Badge> : <Badge variant="warning">Pending</Badge>}
+                          <span className="text-xs text-muted-foreground">{new Date(report.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                     ))}
@@ -318,20 +310,18 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {disputes.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">
-                    No active disputes. Create one from a client profile.
-                  </div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No active disputes. Create one from a client profile.</div>
                 ) : (
                   <div className="space-y-3">
                     {disputes.map((dispute) => (
-                      <div key={dispute.id} className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors">
+                      <div key={dispute.id} className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/30">
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-50">
                             <Clock className="h-4 w-4 text-amber-600" />
                           </div>
                           <div>
                             <p className="text-sm font-medium">{dispute.type}</p>
-                            <p className="text-xs text-muted-foreground">{dispute.client.name} &bull; {dispute.bureau}</p>
+                            <p className="text-xs text-muted-foreground">{dispute.client.name} • {dispute.bureau}</p>
                           </div>
                         </div>
                         <Badge variant={statusColor(dispute.status)}>{dispute.status.replace("_", " ")}</Badge>

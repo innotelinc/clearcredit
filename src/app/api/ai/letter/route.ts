@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { generateDisputeLetter } from "@/lib/ai-letter";
+import { prisma } from "@/lib/prisma";
+import { assertCanAccessDispute, requireRequestUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await requireRequestUser(request);
 
     const body = await request.json();
     const { disputeItemId } = body;
@@ -16,10 +15,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Dispute item ID is required" }, { status: 400 });
     }
 
+    const dispute = await prisma.disputeItem.findUnique({
+      where: { id: disputeItemId },
+      select: { id: true, clientId: true },
+    });
+
+    if (!dispute) {
+      return NextResponse.json({ error: "Dispute not found" }, { status: 404 });
+    }
+
+    assertCanAccessDispute(user, dispute.clientId);
+
     const { letter } = await generateDisputeLetter(disputeItemId);
     return NextResponse.json({ letter }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("AI letter generation error:", error);
-    return NextResponse.json({ error: error.message || "Failed to generate letter" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to generate letter");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

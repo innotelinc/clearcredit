@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAdminUser(request);
+
     const clients = await prisma.client.findMany({
       include: {
         user: { select: { id: true, email: true, name: true } },
@@ -11,15 +15,20 @@ export async function GET() {
       },
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json(clients);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Get clients error:", error);
-    return NextResponse.json({ error: "Failed to fetch clients" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch clients");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    await requireAdminUser(request);
+
     const body = await request.json();
     const { name, email, phone, address, city, state, zip, ssn, dateOfBirth, password, businessId } = body;
 
@@ -46,8 +55,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const finalBusinessId = business.id;
-
     const client = await prisma.client.create({
       data: {
         name,
@@ -60,7 +67,7 @@ export async function POST(request: Request) {
         ssn,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
         userId,
-        businessId: finalBusinessId,
+        businessId: business.id,
       },
       include: { user: { select: { id: true, email: true, name: true } } },
     });
@@ -70,8 +77,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(client, { status: 201 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Create client error:", error);
-    return NextResponse.json({ error: "Failed to create client" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to create client");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

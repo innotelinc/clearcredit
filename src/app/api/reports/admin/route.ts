@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function GET(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-    });
-
-    if (!user || user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-    }
+    await requireAdminUser(request);
 
     const reports = await prisma.creditReport.findMany({
       include: { client: { select: { name: true, email: true } } },
@@ -23,8 +13,10 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({ reports });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get admin reports error:", error);
-    return NextResponse.json({ error: error.message || "Failed to fetch reports" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch reports");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

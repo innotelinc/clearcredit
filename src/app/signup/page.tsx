@@ -88,7 +88,7 @@ export default function SignupPage() {
     billingType: "package" as "package" | "subscription",
   });
 
-  function updateField(field: string, value: any) {
+  function updateField<K extends keyof typeof formData>(field: K, value: (typeof formData)[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -124,30 +124,13 @@ export default function SignupPage() {
     setError("");
 
     try {
-      const userRes = await fetch("/api/auth/register", {
+      const registrationRes = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: formData.email,
           password: formData.password,
           name: formData.name,
-          role: "CLIENT",
-        }),
-      });
-
-      if (!userRes.ok) {
-        const err = await userRes.json();
-        throw new Error(err.error || "Registration failed");
-      }
-
-      const user = await userRes.json();
-
-      const clientRes = await fetch("/api/clients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
           phone: formData.phone,
           address: formData.address,
           city: formData.city,
@@ -155,42 +138,48 @@ export default function SignupPage() {
           zip: formData.zip,
           ssn: formData.ssn,
           dateOfBirth: formData.dateOfBirth,
-          userId: user.id,
-          businessId: "default",
-        }),
-      });
-
-      if (!clientRes.ok) {
-        throw new Error("Failed to create client profile");
-      }
-
-      const client = await clientRes.json();
-
-      await fetch("/api/contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: client.id,
-          title: "Credit Repair Service Agreement",
-          content: contractTemplate,
-          services: "Full credit repair services including dispute letters, progress tracking, and consultation",
-          monthlyFee: formData.billingType === "subscription"
-            ? (formData.plan === "basic_monthly" ? 49 : formData.plan === "premium_monthly" ? 149 : 99)
-            : (formData.package === "basic" ? 149 : formData.package === "premium" ? 499 : 299),
-          startDate: new Date().toISOString(),
+          contractTitle: "Credit Repair Service Agreement",
+          contractContent: contractTemplate,
+          contractServices: "Full credit repair services including dispute letters, progress tracking, and consultation",
+          monthlyFee:
+            formData.billingType === "subscription"
+              ? formData.plan === "basic_monthly"
+                ? 49
+                : formData.plan === "premium_monthly"
+                  ? 149
+                  : 99
+              : formData.package === "basic"
+                ? 149
+                : formData.package === "premium"
+                  ? 499
+                  : 299,
           signedAt: new Date().toISOString(),
           signatureData: formData.signature,
-          status: "signed",
+          contractStatus: "signed",
         }),
       });
 
-      // Create Stripe checkout session for payment
-      const checkoutPayload: any = {
+      if (!registrationRes.ok) {
+        const err = await registrationRes.json();
+        throw new Error(err.error || "Registration failed");
+      }
+
+      const registration = await registrationRes.json();
+
+      const checkoutPayload: {
+        email: string;
+        name: string;
+        clientId: string;
+        successUrl: string;
+        cancelUrl: string;
+        plan?: string;
+        package?: string;
+      } = {
         email: formData.email,
         name: formData.name,
-        clientId: client.id,
-        successUrl: `${window.location.origin}/client/dashboard?success=true`,
-        cancelUrl: `${window.location.origin}/signup?canceled=true`,
+        clientId: registration.clientId,
+        successUrl: "/client/dashboard?success=true",
+        cancelUrl: "/signup?canceled=true",
       };
       if (formData.billingType === "subscription") {
         checkoutPayload.plan = formData.plan;
@@ -215,8 +204,8 @@ export default function SignupPage() {
       }
 
       window.location.href = "/client/dashboard";
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
       setLoading(false);
     }
   }

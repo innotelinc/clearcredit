@@ -37,7 +37,7 @@ export default function ClientBillingPage() {
 
   useEffect(() => {
     fetch("/api/me")
-      .then((r) => r.json())
+      .then((response) => response.json())
       .then((data) => {
         if (data.client) {
           setClient(data.client);
@@ -74,16 +74,30 @@ export default function ClientBillingPage() {
   const credits = client?.disputeCredits ?? 0;
   const pkgName = client?.disputePackage || "None";
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <ClientHeader />
+        <main className="mx-auto max-w-5xl px-4 py-8">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 w-48 rounded bg-muted" />
+            <div className="h-64 rounded-xl bg-muted" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <ClientHeader />
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">Billing</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage your dispute packages and payment history</p>
+          <p className="mt-1 text-sm text-muted-foreground">Manage your dispute packages and payment history</p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -91,9 +105,7 @@ export default function ClientBillingPage() {
                   <p className="text-sm text-muted-foreground">Dispute Credits</p>
                   <p className="text-xl font-bold">{credits} remaining</p>
                 </div>
-                <Badge variant={credits > 0 ? "success" : "warning"}>
-                  {credits > 0 ? "Active" : "No Credits"}
-                </Badge>
+                <Badge variant={credits > 0 ? "success" : "warning"}>{credits > 0 ? "Active" : "No Credits"}</Badge>
               </div>
             </CardContent>
           </Card>
@@ -104,23 +116,21 @@ export default function ClientBillingPage() {
                   <p className="text-sm text-muted-foreground">{client?.subscriptionPlan ? "Subscription" : "Current Package"}</p>
                   <p className="text-xl font-bold">
                     {client?.subscriptionPlan
-                      ? client.subscriptionPlan.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())
+                      ? client.subscriptionPlan.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
                       : pkgName === "None"
-                      ? "—"
-                      : pkgName.charAt(0).toUpperCase() + pkgName.slice(1)}
+                        ? "—"
+                        : pkgName.charAt(0).toUpperCase() + pkgName.slice(1)}
                   </p>
                 </div>
                 <CreditCard className="h-8 w-8 text-primary opacity-80" />
               </div>
               {client?.subscriptionPlan && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Renews monthly • {client.subscriptionStatus === "active" ? "Active" : client.subscriptionStatus}
-                </div>
+                <div className="mt-2 text-xs text-muted-foreground">Renews monthly • {client.subscriptionStatus === "active" ? "Active" : client.subscriptionStatus}</div>
               )}
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6 flex items-center justify-center">
+            <CardContent className="flex items-center justify-center p-6">
               <Button
                 onClick={() => {
                   const pkg = client?.disputePackage || "standard";
@@ -132,11 +142,11 @@ export default function ClientBillingPage() {
                       name: client?.name,
                       package: pkg,
                       clientId: client?.id,
-                      successUrl: `${window.location.origin}/client/dashboard?success=true`,
-                      cancelUrl: `${window.location.origin}/client/billing?canceled=true`,
+                      successUrl: "/client/dashboard?success=true",
+                      cancelUrl: "/client/billing?canceled=true",
                     }),
                   })
-                    .then((r) => r.json())
+                    .then((response) => response.json())
                     .then((data) => {
                       if (data.url) window.location.href = data.url;
                     })
@@ -144,17 +154,14 @@ export default function ClientBillingPage() {
                 }}
                 className="w-full"
               >
-                <CreditCard className="h-4 w-4 mr-2" />
+                <CreditCard className="mr-2 h-4 w-4" />
                 Buy More Credits
               </Button>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-6 flex items-center justify-center">
-              <Button onClick={openPortal} isLoading={portalLoading} variant="outline" className="w-full">
-                <ArrowUpRight className="h-4 w-4 mr-2" />
-                Manage Payment Methods
-              </Button>
+            <CardContent className="flex items-center justify-center p-6">
+              <Button onClick={openPortal} isLoading={portalLoading} variant="outline" className="w-full"><ArrowUpRight className="mr-2 h-4 w-4" />Manage Payment Methods</Button>
             </CardContent>
           </Card>
         </div>
@@ -184,31 +191,15 @@ export default function ClientBillingPage() {
               <TableBody>
                 {!client?.invoices?.length ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                      No invoices yet. They will appear here once payments are processed.
-                    </TableCell>
+                    <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No invoices yet. They will appear here once payments are processed.</TableCell>
                   </TableRow>
                 ) : (
-                  client.invoices.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Download className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{inv.description || "Subscription"}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        ${parseFloat(inv.amount || "0").toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusColor(inv.status)}>{inv.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-3 w-3" />
-                          {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString() : new Date(inv.createdAt).toLocaleDateString()}
-                        </div>
-                      </TableCell>
+                  client.invoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell><div className="flex items-center gap-2"><Download className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{invoice.description || "Subscription"}</span></div></TableCell>
+                      <TableCell className="font-medium">${Number.parseFloat(invoice.amount || "0").toFixed(2)}</TableCell>
+                      <TableCell><Badge variant={statusColor(invoice.status)}>{invoice.status}</Badge></TableCell>
+                      <TableCell className="text-sm text-muted-foreground"><div className="flex items-center gap-2"><Calendar className="h-3 w-3" />{invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString() : new Date(invoice.createdAt).toLocaleDateString()}</div></TableCell>
                     </TableRow>
                   ))
                 )}

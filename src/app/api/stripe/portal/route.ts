@@ -1,26 +1,23 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
-import { getToken } from "next-auth/jwt";
-import { NextRequest } from "next/server";
+import { requireRequestUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await requireRequestUser(request);
 
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
       include: { clients: true },
     });
 
-    if (!user?.clients?.length) {
+    if (!dbUser?.clients?.length) {
       return NextResponse.json({ error: "No client profile found" }, { status: 400 });
     }
 
-    const client = user.clients[0];
+    const client = dbUser.clients[0];
     if (!client?.stripeCustomerId) {
       return NextResponse.json({ error: "No Stripe customer found" }, { status: 400 });
     }
@@ -31,8 +28,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Stripe portal error:", error);
-    return NextResponse.json({ error: error.message || "Failed to create portal session" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to create portal session");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

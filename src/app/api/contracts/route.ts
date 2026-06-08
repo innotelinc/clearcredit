@@ -1,23 +1,39 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAdminUser(request);
+
     const contracts = await prisma.serviceContract.findMany({
-      include: { client: true },
+      include: {
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(contracts);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Get contracts error:", error);
-    return NextResponse.json({ error: "Failed to fetch contracts" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch contracts");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    await requireAdminUser(request);
+
     const body = await request.json();
-    const { clientId, title, content, services, monthlyFee, startDate, endDate } = body;
+    const { clientId, title, content, services, monthlyFee, startDate, endDate, signedAt, signatureData, status } = body;
 
     const contract = await prisma.serviceContract.create({
       data: {
@@ -25,11 +41,22 @@ export async function POST(request: Request) {
         title,
         content,
         services,
-        monthlyFee: monthlyFee ? parseFloat(monthlyFee) : 0,
-        startDate: new Date(startDate),
+        monthlyFee: monthlyFee ? Number(monthlyFee) : 0,
+        startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : undefined,
+        signedAt: signedAt ? new Date(signedAt) : undefined,
+        signatureData: signatureData || undefined,
+        status: status || "pending",
       },
-      include: { client: true },
+      include: {
+        client: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     });
 
     await prisma.activityLog.create({
@@ -37,8 +64,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(contract, { status: 201 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Create contract error:", error);
-    return NextResponse.json({ error: "Failed to create contract" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to create contract");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

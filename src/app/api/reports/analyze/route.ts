@@ -1,27 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import OpenAI from "openai";
-import { prisma } from "@/lib/prisma";
 import { generateDisputeLetter } from "@/lib/ai-letter";
+import { isAdmin, requireRequestUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
+import { prisma } from "@/lib/prisma";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+interface ParsedDisputeCandidate {
+  bureau?: string;
+  type?: string;
+  description?: string;
+  creditor?: string | null;
+  accountNumber?: string | null;
+  amount?: string | null;
+  confidenceScore?: number | null;
+  reason?: string | null;
+}
+
+function parseDisputeCandidates(content: string): ParsedDisputeCandidate[] {
+  const firstBracket = content.indexOf("[");
+  const lastBracket = content.lastIndexOf("]");
+
+  if (firstBracket === -1 || lastBracket === -1 || lastBracket <= firstBracket) {
+    return [];
+  }
+
+  const parsed = JSON.parse(content.slice(firstBracket, lastBracket + 1)) as unknown;
+  return Array.isArray(parsed) ? parsed.filter((item): item is ParsedDisputeCandidate => typeof item === "object" && item !== null) : [];
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-      include: { clients: true },
-    });
-
-    if (!user?.clients?.length) {
-      return NextResponse.json({ error: "No client profile found" }, { status: 400 });
-    }
-
+    const user = await requireRequestUser(request);
     const body = await request.json();
     const { reportId } = body;
 
@@ -38,7 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
 
-    if (report.client.userId !== user.id) {
+    if (!isAdmin(user) && report.client.userId !== user.id) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
@@ -67,19 +78,7 @@ For each item you identify, provide:
 7. confidenceScore - your confidence this item is disputable (0-100)
 8. reason - why this item may be disputable
 
-Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks. Format:
-[
-  {
-    "bureau": "Experian",
-    "type": "Late Payment",
-    "description": "30-day late payment reported March 2023",
-    "creditor": "Capital One",
-    "accountNumber": "****1234",
-    "amount": "$450",
-    "confidenceScore": 85,
-    "reason": "Client disputes ever being late"
-  }
-]`;
+Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks.`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -93,21 +92,16 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
 
     const content = completion.choices[0]?.message?.content || "";
 
-    let parsedItems: any[] = [];
+    let parsedItems: ParsedDisputeCandidate[] = [];
     try {
-      const firstBracket = content.indexOf("[");
-      const lastBracket = content.lastIndexOf("]");
-      if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-        parsedItems = JSON.parse(content.slice(firstBracket, lastBracket + 1));
-      }
-      if (!Array.isArray(parsedItems)) parsedItems = [];
-    } catch (e) {
+      parsedItems = parseDisputeCandidates(content);
+    } catch {
       console.error("Failed to parse AI response:", content);
       return NextResponse.json({ error: "AI response parsing failed" }, { status: 500 });
     }
 
     const client = await prisma.client.findUnique({ where: { id: report.clientId } });
-    const validItems = parsedItems.filter((item: any) => item.type && item.description);
+    const validItems = parsedItems.filter((item) => item.type && item.description);
 
     if (!client || client.disputeCredits < validItems.length) {
       return NextResponse.json({
@@ -122,8 +116,8 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
           reportId: report.id,
           clientId: report.clientId,
           bureau: item.bureau || report.bureau || "Unknown",
-          type: item.type,
-          description: item.description,
+          type: item.type!,
+          description: item.description!,
           creditor: item.creditor || null,
           accountNumber: item.accountNumber || null,
           amount: item.amount || null,
@@ -141,10 +135,9 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
       data: { disputeCredits: newCredits },
     });
 
-    // Low-credit email alert
     if (newCredits <= 2 && newCredits > 0) {
       const { sendLowCreditAlert } = await import("@/lib/email");
-      await sendLowCreditAlert(client.email, client.name, newCredits).catch(() => {});
+      await sendLowCreditAlert(client.email, client.name, newCredits).catch(() => undefined);
     }
 
     await prisma.creditReport.update({
@@ -163,14 +156,14 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
       },
     });
 
-    // Auto-generate FCRA letters for high-confidence disputes using shared function
-    const highConfidence = createdDisputes.filter((d) => (d.confidenceScore || 0) >= 70);
+    const highConfidence = createdDisputes.filter((dispute) => (dispute.confidenceScore || 0) >= 70);
     const generatedLetters = [];
+
     for (const dispute of highConfidence) {
       try {
         const { letter } = await generateDisputeLetter(dispute.id);
         generatedLetters.push(letter);
-      } catch (e) {
+      } catch {
         console.error("Auto-letter generation failed for dispute", dispute.id);
       }
     }
@@ -181,8 +174,10 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
       disputes: createdDisputes,
       lettersGenerated: generatedLetters.length,
     }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Analyze report error:", error);
-    return NextResponse.json({ error: error.message || "Failed to analyze report" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to analyze report");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

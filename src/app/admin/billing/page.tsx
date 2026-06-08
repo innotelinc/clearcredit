@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, DollarSign, Users, TrendingUp, Download, ArrowUpRight } from "lucide-react";
+import { CreditCard, DollarSign, Users, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -32,35 +31,29 @@ interface Client {
 export default function AdminBillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchBillingData();
+    async function fetchBillingData() {
+      try {
+        const [invRes, clientRes] = await Promise.all([fetch("/api/invoices"), fetch("/api/clients")]);
+        const invData = await invRes.json();
+        const clientData = await clientRes.json();
+        if (Array.isArray(invData)) setInvoices(invData);
+        if (Array.isArray(clientData)) setClients(clientData);
+      } catch (error) {
+        console.error("Failed to fetch billing data", error);
+      }
+    }
+
+    void fetchBillingData();
   }, []);
 
-  async function fetchBillingData() {
-    try {
-      const [invRes, clientRes] = await Promise.all([
-        fetch("/api/invoices"),
-        fetch("/api/clients"),
-      ]);
-      const invData = await invRes.json();
-      const clientData = await clientRes.json();
-      if (Array.isArray(invData)) setInvoices(invData);
-      if (Array.isArray(clientData)) setClients(clientData);
-    } catch (error) {
-      console.error("Failed to fetch billing data", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const totalRevenue = invoices
-    .filter((i) => i.status === "PAID")
-    .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    .filter((invoice) => invoice.status === "PAID")
+    .reduce((sum, invoice) => sum + Number(invoice.amount || 0), 0);
 
-  const activeClients = clients.filter((c) => c.disputeCredits > 0).length;
-  const totalCredits = clients.reduce((sum, c) => sum + (c.disputeCredits || 0), 0);
+  const activeClients = clients.filter((client) => client.disputeCredits > 0).length;
+  const totalCredits = clients.reduce((sum, client) => sum + (client.disputeCredits || 0), 0);
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -78,15 +71,15 @@ export default function AdminBillingPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="ml-64 flex-1">
         <AdminHeader />
         <main className="p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-bold tracking-tight">Billing & Packages</h1>
-            <p className="text-sm text-muted-foreground mt-1">Stripe-integrated revenue and dispute package management</p>
+            <p className="mt-1 text-sm text-muted-foreground">Stripe-integrated revenue and dispute package management</p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-4 mb-8">
+          <div className="mb-8 grid gap-4 md:grid-cols-4">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -152,27 +145,25 @@ export default function AdminBillingPage() {
                   <TableBody>
                     {invoices.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                           No invoices yet. They will appear here once Stripe payments are processed.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      invoices.slice(0, 10).map((inv) => (
-                        <TableRow key={inv.id}>
+                      invoices.slice(0, 10).map((invoice) => (
+                        <TableRow key={invoice.id}>
                           <TableCell>
                             <div>
-                              <p className="text-sm font-medium">{inv.client?.name || "—"}</p>
-                              <p className="text-xs text-muted-foreground">{inv.client?.email || "—"}</p>
+                              <p className="text-sm font-medium">{invoice.client?.name || "—"}</p>
+                              <p className="text-xs text-muted-foreground">{invoice.client?.email || "—"}</p>
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">
-                            ${parseFloat(inv.amount || "0").toFixed(2)}
-                          </TableCell>
+                          <TableCell className="font-medium">${Number.parseFloat(invoice.amount || "0").toFixed(2)}</TableCell>
                           <TableCell>
-                            <Badge variant={statusColor(inv.status)}>{inv.status}</Badge>
+                            <Badge variant={statusColor(invoice.status)}>{invoice.status}</Badge>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
-                            {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString() : new Date(inv.createdAt).toLocaleDateString()}
+                            {invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString() : new Date(invoice.createdAt).toLocaleDateString()}
                           </TableCell>
                         </TableRow>
                       ))
@@ -199,7 +190,7 @@ export default function AdminBillingPage() {
                   <TableBody>
                     {clients.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
                           No clients found.
                         </TableCell>
                       </TableRow>
@@ -213,13 +204,11 @@ export default function AdminBillingPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={client.disputeCredits > 0 ? "success" : "warning"}>
-                              {client.disputeCredits} left
-                            </Badge>
+                            <Badge variant={client.disputeCredits > 0 ? "success" : "warning"}>{client.disputeCredits} left</Badge>
                           </TableCell>
                           <TableCell>
                             {client.disputePackage ? (
-                              <span className="text-xs text-muted-foreground capitalize">{client.disputePackage}</span>
+                              <span className="text-xs capitalize text-muted-foreground">{client.disputePackage}</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">No package</span>
                             )}

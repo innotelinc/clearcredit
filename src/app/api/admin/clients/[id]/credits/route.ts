@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const admin = await prisma.user.findUnique({ where: { email: token.email } });
-    if (!admin || admin.role !== "ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    await requireAdminUser(request);
 
     const body = await request.json();
     const { amount, reason } = body;
@@ -47,8 +40,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       disputeCredits: updated.disputeCredits,
       message: `${Math.abs(amount)} credits ${amount > 0 ? "added" : "removed"}`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Admin credits error:", error);
-    return NextResponse.json({ error: "Failed to update credits" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to update credits");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
