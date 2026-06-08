@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "No business found" }, { status: 404 });
     }
 
+    const llmStatus = getLlmStatus();
     const lastAutomationRun = await prisma.automationRun.findFirst({
       orderBy: { startedAt: "desc" },
     });
@@ -33,12 +34,13 @@ export async function GET(request: NextRequest) {
       integrations: {
         stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
         webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
-        llmConfigured: getLlmStatus().configured,
-        llmBackend: getLlmStatus().backend,
-        llmDisplayName: getLlmStatus().displayName,
-        llmBaseUrl: getLlmStatus().baseURL,
-        llmAnalysisModel: getLlmStatus().analysisModel,
-        llmLetterModel: getLlmStatus().letterModel,
+        llmConfigured: llmStatus.configured,
+        llmBackend: llmStatus.backend,
+        llmDisplayName: llmStatus.displayName,
+        llmBaseUrl: llmStatus.baseURL,
+        llmAnalysisModel: llmStatus.analysisModel,
+        llmLetterModel: llmStatus.letterModel,
+        usingLocalProxy: llmStatus.usingLocalProxy,
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         reportProviderConfigured: isRealProviderConfigured(),
       },

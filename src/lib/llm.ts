@@ -35,8 +35,8 @@ export function resolveLlmConfig(env: NodeJS.ProcessEnv = process.env, task: Llm
       backend: "proxy",
       apiKey,
       baseURL: normalizeBaseUrl(env.LLM_PROXY_BASE_URL || "http://127.0.0.1:8000/v1"),
-      model: getTaskModel(env, env.LLM_PROXY_MODEL || "openrouter/openai/gpt-4o-mini", task),
-      displayName: "LLM Proxy",
+      model: getTaskModel(env, env.LLM_PROXY_MODEL || "openrouter/owl-alpha", task),
+      displayName: "Mirrowel Proxy",
     };
   }
 
@@ -54,13 +54,13 @@ export function resolveLlmConfig(env: NodeJS.ProcessEnv = process.env, task: Llm
       backend: "openrouter",
       apiKey,
       baseURL: normalizeBaseUrl(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1"),
-      model: getTaskModel(env, env.OPENROUTER_MODEL || "openai/gpt-4o-mini", task),
+      model: getTaskModel(env, env.OPENROUTER_MODEL || "openrouter/owl-alpha", task),
       displayName: "OpenRouter",
       headers,
     };
   }
 
-  if (backend === "openai" || (!backend && env.OPENAI_API_KEY)) {
+  if (backend === "openai" || (!backend && env.OPENAI_API_KEY && !env.PROXY_API_KEY && !env.LLM_PROXY_API_KEY && !env.OPENROUTER_API_KEY)) {
     const apiKey = env.OPENAI_API_KEY || "";
     if (!apiKey) return null;
 
@@ -73,12 +73,12 @@ export function resolveLlmConfig(env: NodeJS.ProcessEnv = process.env, task: Llm
     };
   }
 
-  if (!backend && env.OPENROUTER_API_KEY) {
-    return resolveLlmConfig({ ...env, LLM_BACKEND: "openrouter" }, task);
-  }
-
   if (!backend && (env.LLM_PROXY_API_KEY || env.PROXY_API_KEY)) {
     return resolveLlmConfig({ ...env, LLM_BACKEND: "proxy" }, task);
+  }
+
+  if (!backend && env.OPENROUTER_API_KEY) {
+    return resolveLlmConfig({ ...env, LLM_BACKEND: "openrouter" }, task);
   }
 
   return null;
@@ -99,6 +99,7 @@ export function getLlmStatus(env: NodeJS.ProcessEnv = process.env) {
     baseURL: analysis?.baseURL || null,
     analysisModel: analysis?.model || null,
     letterModel: letter?.model || null,
+    usingLocalProxy: analysis?.backend === "proxy",
   };
 }
 
@@ -145,4 +146,16 @@ export async function generateLlmText({
     model: config.model,
     baseURL: config.baseURL,
   };
+}
+
+export async function testLlmBackend() {
+  const response = await generateLlmText({
+    task: "analysis",
+    system: "You are a backend health-check assistant. Reply with only the single word ok.",
+    user: "Reply with exactly: ok",
+    temperature: 0,
+    maxTokens: 8,
+  });
+
+  return response;
 }

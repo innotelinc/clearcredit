@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Building2, CreditCard, Mail, Play, Save, Sparkles } from "lucide-react";
+import { Bot, Building2, CheckCircle2, CreditCard, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,7 @@ interface SettingsResponse {
     llmBaseUrl: string | null;
     llmAnalysisModel: string | null;
     llmLetterModel: string | null;
+    usingLocalProxy: boolean;
     resendConfigured: boolean;
     reportProviderConfigured: boolean;
   };
@@ -43,12 +44,24 @@ interface SettingsResponse {
   };
 }
 
+interface LlmTestResult {
+  ok: boolean;
+  result: {
+    text: string;
+    backend: string;
+    model: string;
+    baseURL: string;
+  };
+}
+
 export default function AdminSettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runningAutomation, setRunningAutomation] = useState(false);
+  const [testingLlm, setTestingLlm] = useState(false);
   const [message, setMessage] = useState("");
+  const [llmTestMessage, setLlmTestMessage] = useState("");
   const [form, setForm] = useState({ name: "", address: "", phone: "", plan: "STARTER" });
 
   async function fetchSettingsData() {
@@ -137,6 +150,23 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function testLlmBackend() {
+    setTestingLlm(true);
+    setLlmTestMessage("");
+    try {
+      const res = await fetch("/api/settings/llm-test", { method: "POST" });
+      const payload = (await res.json()) as LlmTestResult | { error: string };
+      if (!res.ok || !("ok" in payload)) {
+        throw new Error("error" in payload ? payload.error : "Failed to test LLM backend");
+      }
+      setLlmTestMessage(`Live LLM test passed via ${payload.result.backend} using ${payload.result.model}. Response: ${payload.result.text}`);
+    } catch (error) {
+      setLlmTestMessage(error instanceof Error ? error.message : "Failed to test LLM backend");
+    } finally {
+      setTestingLlm(false);
+    }
+  }
+
   const integrationCards = data
     ? [
         { label: "Stripe", ok: data.integrations.stripeConfigured && data.integrations.webhookConfigured, icon: CreditCard, detail: data.integrations.webhookConfigured ? "Checkout + webhooks ready" : "Missing key or webhook secret" },
@@ -204,8 +234,9 @@ export default function AdminSettingsPage() {
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Letter model</p><p className="mt-1 break-all font-semibold">{data.integrations.llmLetterModel || "Not configured"}</p></div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">LLM endpoint</p><p className="mt-1 break-all font-semibold">{data.integrations.llmBaseUrl || "Not configured"}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Proxy mode</p><p className="mt-1 font-semibold">{data.integrations.usingLocalProxy ? "Local Mirrowel proxy active" : "Direct backend mode"}</p></div>
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provider webhook callback</p><p className="mt-1 break-all font-semibold">{data.automation.callbackUrl}</p></div>
                     </div>
 
@@ -223,9 +254,14 @@ export default function AdminSettingsPage() {
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button onClick={runAutomation} isLoading={runningAutomation}><Play className="h-4 w-4" />Run automation now</Button>
-                      <p className="text-muted-foreground">Supported LLM backends: direct OpenAI, OpenRouter, and Mirrowel LLM-API-Key-Proxy.</p>
+                    <div className="rounded-lg border bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Button onClick={runAutomation} isLoading={runningAutomation}><Play className="h-4 w-4" />Run automation now</Button>
+                        <Button variant="outline" onClick={testLlmBackend} isLoading={testingLlm}><Stethoscope className="h-4 w-4" />Test LLM backend</Button>
+                        {data.integrations.usingLocalProxy ? <Badge variant="success"><CheckCircle2 className="mr-1 h-3 w-3" />Proxy default active</Badge> : null}
+                      </div>
+                      <p className="mt-3 text-muted-foreground">Supported LLM backends: direct OpenAI, OpenRouter, and Mirrowel LLM-API-Key-Proxy.</p>
+                      {llmTestMessage ? <p className="mt-2 text-sm text-muted-foreground">{llmTestMessage}</p> : null}
                     </div>
                   </CardContent>
                 </Card>
