@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Building2, CheckCircle2, CreditCard, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
+import { Activity, Bot, Building2, CheckCircle2, CreditCard, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,12 @@ interface SettingsResponse {
     llmAnalysisModel: string | null;
     llmLetterModel: string | null;
     usingLocalProxy: boolean;
+    proxyStatus: {
+      enabled: boolean;
+      reachable: boolean;
+      statusText: string;
+      healthUrl: string | null;
+    };
     resendConfigured: boolean;
     reportProviderConfigured: boolean;
   };
@@ -160,6 +166,7 @@ export default function AdminSettingsPage() {
         throw new Error("error" in payload ? payload.error : "Failed to test LLM backend");
       }
       setLlmTestMessage(`Live LLM test passed via ${payload.result.backend} using ${payload.result.model}. Response: ${payload.result.text}`);
+      await loadSettings();
     } catch (error) {
       setLlmTestMessage(error instanceof Error ? error.message : "Failed to test LLM backend");
     } finally {
@@ -234,10 +241,25 @@ export default function AdminSettingsPage() {
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Letter model</p><p className="mt-1 break-all font-semibold">{data.integrations.llmLetterModel || "Not configured"}</p></div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">LLM endpoint</p><p className="mt-1 break-all font-semibold">{data.integrations.llmBaseUrl || "Not configured"}</p></div>
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Proxy mode</p><p className="mt-1 font-semibold">{data.integrations.usingLocalProxy ? "Local Mirrowel proxy active" : "Direct backend mode"}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Proxy health</p><p className="mt-1 font-semibold">{data.integrations.proxyStatus.enabled ? (data.integrations.proxyStatus.reachable ? "Reachable" : "Unreachable") : "Inactive"}</p></div>
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provider webhook callback</p><p className="mt-1 break-all font-semibold">{data.automation.callbackUrl}</p></div>
+                    </div>
+
+                    <div className="rounded-lg border bg-muted/20 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium">Local proxy status</p>
+                          <p className="mt-1 text-muted-foreground">{data.integrations.proxyStatus.statusText}</p>
+                          {data.integrations.proxyStatus.healthUrl ? <p className="mt-1 break-all text-xs text-muted-foreground">{data.integrations.proxyStatus.healthUrl}</p> : null}
+                        </div>
+                        <Badge variant={data.integrations.proxyStatus.reachable ? "success" : data.integrations.proxyStatus.enabled ? "warning" : "outline"}>
+                          <Activity className="mr-1 h-3 w-3" />
+                          {data.integrations.proxyStatus.enabled ? (data.integrations.proxyStatus.reachable ? "Online" : "Offline") : "Inactive"}
+                        </Badge>
+                      </div>
                     </div>
 
                     <div className="rounded-lg border bg-muted/20 p-4">

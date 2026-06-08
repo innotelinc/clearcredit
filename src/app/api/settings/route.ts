@@ -16,6 +16,38 @@ async function getAdminBusiness(userId: string) {
   return prisma.business.findFirst({ orderBy: { createdAt: "asc" } });
 }
 
+async function getProxyStatus() {
+  const llmStatus = getLlmStatus();
+  if (!llmStatus.usingLocalProxy || !llmStatus.baseURL) {
+    return {
+      enabled: false,
+      reachable: false,
+      statusText: "Local proxy mode is not active",
+      healthUrl: null as string | null,
+    };
+  }
+
+  const healthUrl = llmStatus.baseURL.replace(/\/v1\/?$/, "") + "/";
+
+  try {
+    const response = await fetch(healthUrl, { cache: "no-store" });
+    const text = await response.text();
+    return {
+      enabled: true,
+      reachable: response.ok,
+      statusText: response.ok ? text.slice(0, 120) || "Proxy reachable" : `Proxy responded with HTTP ${response.status}`,
+      healthUrl,
+    };
+  } catch (error) {
+    return {
+      enabled: true,
+      reachable: false,
+      statusText: getErrorMessage(error, "Proxy health check failed"),
+      healthUrl,
+    };
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
@@ -25,9 +57,10 @@ export async function GET(request: NextRequest) {
     }
 
     const llmStatus = getLlmStatus();
-    const lastAutomationRun = await prisma.automationRun.findFirst({
-      orderBy: { startedAt: "desc" },
-    });
+    const [lastAutomationRun, proxyStatus] = await Promise.all([
+      prisma.automationRun.findFirst({ orderBy: { startedAt: "desc" } }),
+      getProxyStatus(),
+    ]);
 
     return NextResponse.json({
       business,
@@ -41,6 +74,7 @@ export async function GET(request: NextRequest) {
         llmAnalysisModel: llmStatus.analysisModel,
         llmLetterModel: llmStatus.letterModel,
         usingLocalProxy: llmStatus.usingLocalProxy,
+        proxyStatus,
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         reportProviderConfigured: isRealProviderConfigured(),
       },
@@ -55,7 +89,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error("Get settings error:", error);
     const message = getErrorMessage(error, "Failed to fetch settings");
-    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    const status = error instanceof Error && "status" in error ? Number((error as { status?: number }).status) : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }
@@ -89,7 +123,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error: unknown) {
     console.error("Update settings error:", error);
     const message = getErrorMessage(error, "Failed to update settings");
-    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    const status = error instanceof Error && "status" in error ? Number((error as { status?: number }).status) : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }
