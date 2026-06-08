@@ -1,9 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
   try {
+    await requireAdminUser(request);
+
     const client = await prisma.client.findUnique({
       where: { id },
       include: {
@@ -21,15 +26,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     return NextResponse.json(client);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Get client error:", error);
-    return NextResponse.json({ error: "Failed to fetch client" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch client");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
   try {
+    await requireAdminUser(request);
+
     const body = await request.json();
     const { name, email, phone, address, city, state, zip, creditScore, status, subscriptionStatus } = body;
     const client = await prisma.client.update({
@@ -37,19 +47,26 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       data: { name, email, phone, address, city, state, zip, creditScore, status, subscriptionStatus },
     });
     return NextResponse.json(client);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Update client error:", error);
-    return NextResponse.json({ error: "Failed to update client" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to update client");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
   try {
+    await requireAdminUser(request);
+
     await prisma.client.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Delete client error:", error);
-    return NextResponse.json({ error: "Failed to delete client" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to delete client");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

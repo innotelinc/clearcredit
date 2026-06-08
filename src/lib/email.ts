@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { getErrorMessage } from "@/lib/errors";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const fromEmail = process.env.FROM_EMAIL || "onboarding@resend.dev";
@@ -25,7 +26,7 @@ export async function sendEmail(payload: EmailPayload): Promise<{ success: boole
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const { error } = await resend.emails.send({
       from: fromEmail,
       to: payload.to,
       subject: payload.subject,
@@ -39,9 +40,9 @@ export async function sendEmail(payload: EmailPayload): Promise<{ success: boole
     }
 
     return { success: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Email send error:", err);
-    return { success: false, error: err.message };
+    return { success: false, error: getErrorMessage(err, "Failed to send email") };
   }
 }
 

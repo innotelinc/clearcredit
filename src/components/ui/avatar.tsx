@@ -1,3 +1,4 @@
+import Image from "next/image";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -18,18 +19,19 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
     const initials = fallback
       ? fallback.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
       : "?";
+
     return (
       <div
         ref={ref}
         className={cn(
-          "relative inline-flex items-center justify-center rounded-full bg-primary/10 text-primary font-medium overflow-hidden",
+          "relative inline-flex items-center justify-center overflow-hidden rounded-full bg-primary/10 font-medium text-primary",
           sizeClasses[size],
           className
         )}
         {...props}
       >
         {src ? (
-          <img src={src} alt={alt || "Avatar"} className="h-full w-full object-cover" />
+          <Image src={src} alt={alt || "Avatar"} fill className="object-cover" sizes="48px" unoptimized />
         ) : (
           <span>{initials}</span>
         )}

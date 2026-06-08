@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdminUser } from "@/lib/access-control";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await requireAdminUser(request);
+
     const [resolvedDisputes, totalClients, totalRevenueAgg] = await Promise.all([
       prisma.disputeItem.count({ where: { status: "RESOLVED" } }),
       prisma.client.count(),
@@ -21,9 +24,10 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Stats error:", error);
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
     return NextResponse.json(
-      { resolvedDisputes: 0, totalClients: 0, totalRevenue: 0 },
-      { status: 500 }
+      { error: status === 401 ? "Unauthorized" : status === 403 ? "Admin access required" : "Failed to fetch stats" },
+      { status }
     );
   }
 }

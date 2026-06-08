@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { stripe, SUBSCRIPTION_PLANS } from "@/lib/stripe";
-import { prisma } from "@/lib/prisma";
 import Stripe from "stripe";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { stripe, SUBSCRIPTION_PLANS } from "@/lib/stripe";
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+type StripeInvoiceWithSubscription = Stripe.Invoice & {
+  subscription?: string | Stripe.Subscription | null;
+};
 
 export async function POST(request: Request) {
   if (!webhookSecret) {
@@ -18,8 +23,8 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
-  } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
+  } catch (err: unknown) {
+    console.error("Webhook signature verification failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -30,21 +35,20 @@ export async function POST(request: Request) {
         const clientId = session.metadata?.clientId;
         const pkg = session.metadata?.package;
         const plan = session.metadata?.plan;
-        const disputesToAdd = parseInt(session.metadata?.disputes || "0", 10);
+        const disputesToAdd = Number.parseInt(session.metadata?.disputes || "0", 10);
         const type = session.metadata?.type;
 
         if (clientId) {
           const client = await prisma.client.findUnique({ where: { id: clientId } });
           if (client) {
-            const updateData: any = {
+            const updateData: Prisma.ClientUpdateInput = {
               subscriptionStatus: "active",
-              stripeCustomerId: session.customer as string,
+              stripeCustomerId: typeof session.customer === "string" ? session.customer : null,
             };
 
             if (type === "subscription" && plan) {
-              updateData.stripeSubscriptionId = session.subscription as string;
+              updateData.stripeSubscriptionId = typeof session.subscription === "string" ? session.subscription : null;
               updateData.subscriptionPlan = plan;
-              // Subscription credits are added by invoice.payment_succeeded to avoid double crediting
             } else if (pkg) {
               updateData.disputePackage = pkg;
               updateData.disputeCredits = { increment: disputesToAdd };
@@ -59,9 +63,10 @@ export async function POST(request: Request) {
               data: {
                 clientId,
                 action: type === "subscription" ? "SUBSCRIPTION_STARTED" : "PACKAGE_PURCHASED",
-                details: type === "subscription"
-                  ? `Started ${plan} subscription (+${disputesToAdd} dispute credits/mo) via Stripe`
-                  : `Purchased ${pkg} package (+${disputesToAdd} dispute credits) via Stripe`,
+                details:
+                  type === "subscription"
+                    ? `Started ${plan} subscription (+${disputesToAdd} dispute credits/mo) via Stripe`
+                    : `Purchased ${pkg} package (+${disputesToAdd} dispute credits) via Stripe`,
               },
             });
           }
@@ -70,8 +75,8 @@ export async function POST(request: Request) {
       }
 
       case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
+        const invoice = event.data.object as StripeInvoiceWithSubscription;
+        const customerId = typeof invoice.customer === "string" ? invoice.customer : "";
 
         const client = await prisma.client.findFirst({
           where: { stripeCustomerId: customerId },
@@ -95,8 +100,8 @@ export async function POST(request: Request) {
             },
           });
 
-          // Add monthly dispute credits for subscription renewals only
-          if ((invoice as any).subscription && client.subscriptionPlan) {
+          const hasSubscription = Boolean(invoice.subscription);
+          if (hasSubscription && client.subscriptionPlan) {
             const plan = SUBSCRIPTION_PLANS[client.subscriptionPlan as keyof typeof SUBSCRIPTION_PLANS];
             if (plan) {
               await prisma.client.update({
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
-        const customerId = invoice.customer as string;
+        const customerId = typeof invoice.customer === "string" ? invoice.customer : "";
 
         const client = await prisma.client.findFirst({
           where: { stripeCustomerId: customerId },
@@ -151,7 +156,7 @@ export async function POST(request: Request) {
 
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
+        const customerId = typeof subscription.customer === "string" ? subscription.customer : "";
 
         const client = await prisma.client.findFirst({
           where: { stripeCustomerId: customerId },
@@ -168,7 +173,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Webhook processing error:", error);
     return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }

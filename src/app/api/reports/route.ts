@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
+import { requireRequestUser } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+    const user = await requireRequestUser(request);
     const body = await request.json();
     const { rawData, bureau, score } = body;
 
@@ -20,23 +17,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Credit report data exceeds maximum length of 50,000 characters" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-      include: { clients: true },
-    });
-
-    if (!user?.clients?.length) {
+    const client = await prisma.client.findFirst({ where: { userId: user.id } });
+    if (!client) {
       return NextResponse.json({ error: "No client profile found" }, { status: 400 });
     }
-
-    const client = user.clients[0];
 
     const report = await prisma.creditReport.create({
       data: {
         clientId: client.id,
         rawData,
         bureau: bureau || "Combined",
-        score: score ? parseInt(score) : undefined,
+        score: score ? Number.parseInt(String(score), 10) : undefined,
       },
     });
 
@@ -49,32 +40,27 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ report }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Upload report error:", error);
-    return NextResponse.json({ error: error.message || "Failed to upload report" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to upload report");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-      include: { clients: { include: { creditReports: { orderBy: { createdAt: "desc" } } } } },
+    const user = await requireRequestUser(request);
+    const client = await prisma.client.findFirst({
+      where: { userId: user.id },
+      include: { creditReports: { orderBy: { createdAt: "desc" } } },
     });
 
-    if (!user?.clients?.length) {
-      return NextResponse.json({ reports: [] });
-    }
-
-    const reports = user.clients[0].creditReports;
-    return NextResponse.json({ reports });
-  } catch (error: any) {
+    return NextResponse.json({ reports: client?.creditReports || [] });
+  } catch (error: unknown) {
     console.error("Get reports error:", error);
-    return NextResponse.json({ error: error.message || "Failed to fetch reports" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch reports");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

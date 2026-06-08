@@ -1,108 +1,147 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { stripe, DISPUTE_PACKAGES, SUBSCRIPTION_PLANS } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { getRequestUser, canAccessClient } from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
 
-const BASE_URL = process.env.NEXTAUTH_URL || "http://localhost:3000";
+type CheckoutBody = {
+  email?: string;
+  name?: string;
+  package?: keyof typeof DISPUTE_PACKAGES;
+  plan?: keyof typeof SUBSCRIPTION_PLANS;
+  clientId?: string;
+  successUrl?: string;
+  cancelUrl?: string;
+};
 
-function isValidRedirectUrl(url: string): boolean {
-  if (!url) return true;
-  if (url.startsWith("/") && !url.startsWith("//")) return true;
+function normalizeRedirectUrl(url: string | undefined, request: NextRequest, fallbackPath: string): string | null {
+  if (!url) {
+    return new URL(fallbackPath, request.nextUrl.origin).toString();
+  }
+
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    return new URL(url, request.nextUrl.origin).toString();
+  }
+
   try {
     const parsed = new URL(url);
-    const base = new URL(BASE_URL);
-    return parsed.hostname === base.hostname && parsed.port === base.port && parsed.protocol === base.protocol;
+    return parsed.origin === request.nextUrl.origin ? parsed.toString() : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as CheckoutBody;
     const { email, name, package: pkg, plan, clientId, successUrl, cancelUrl } = body;
 
-    if (successUrl && !isValidRedirectUrl(successUrl)) {
+    if (!clientId || !email) {
+      return NextResponse.json({ error: "Client ID and email are required" }, { status: 400 });
+    }
+
+    const successRedirect = normalizeRedirectUrl(successUrl, request, "/client/dashboard?success=true");
+    if (!successRedirect) {
       return NextResponse.json({ error: "Invalid success URL" }, { status: 400 });
     }
-    if (cancelUrl && !isValidRedirectUrl(cancelUrl)) {
+
+    const cancelRedirect = normalizeRedirectUrl(cancelUrl, request, "/signup?canceled=true");
+    if (!cancelRedirect) {
       return NextResponse.json({ error: "Invalid cancel URL" }, { status: 400 });
     }
 
-    const isPackage = pkg && DISPUTE_PACKAGES[pkg];
-    const isPlan = plan && SUBSCRIPTION_PLANS[plan];
+    const isPackage = pkg ? Boolean(DISPUTE_PACKAGES[pkg]) : false;
+    const isPlan = plan ? Boolean(SUBSCRIPTION_PLANS[plan]) : false;
 
-    if (!email || (!isPackage && !isPlan)) {
-      return NextResponse.json({ error: "Invalid package/plan or missing email" }, { status: 400 });
+    if (!isPackage && !isPlan) {
+      return NextResponse.json({ error: "Invalid package or plan" }, { status: 400 });
     }
 
-    let customerId: string | undefined;
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        businessId: true,
+        userId: true,
+        stripeCustomerId: true,
+      },
+    });
 
-    if (clientId) {
-      const client = await prisma.client.findUnique({ where: { id: clientId } });
-      if (client?.stripeCustomerId) {
-        customerId = client.stripeCustomerId;
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
+    const requestUser = await getRequestUser(request);
+
+    if (requestUser) {
+      if (!canAccessClient(requestUser, client.id)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } else {
+      const matchesClientIdentity = client.email.toLowerCase() === email.toLowerCase();
+      if (!matchesClientIdentity || client.stripeCustomerId) {
+        return NextResponse.json({ error: "Authentication required for this checkout session" }, { status: 401 });
       }
     }
+
+    let customerId = client.stripeCustomerId ?? undefined;
 
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
-        name: name || undefined,
-        metadata: { clientId: clientId || "" },
+        name: name || client.name || undefined,
+        metadata: { clientId: client.id },
       });
       customerId = customer.id;
 
-      if (clientId) {
-        await prisma.client.update({
-          where: { id: clientId },
-          data: { stripeCustomerId: customerId },
-        });
-      }
+      await prisma.client.update({
+        where: { id: client.id },
+        data: { stripeCustomerId: customerId },
+      });
     }
 
-    let session;
-    if (isPackage) {
-      session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: { name: `ClearCredit ${DISPUTE_PACKAGES[pkg].name} — ${DISPUTE_PACKAGES[pkg].disputes} Disputes` },
-              unit_amount: DISPUTE_PACKAGES[pkg].amount,
+    const session = isPackage
+      ? await stripe.checkout.sessions.create({
+          customer: customerId,
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: { name: `ClearCredit ${DISPUTE_PACKAGES[pkg!].name} — ${DISPUTE_PACKAGES[pkg!].disputes} Disputes` },
+                unit_amount: DISPUTE_PACKAGES[pkg!].amount,
+              },
+              quantity: 1,
             },
-            quantity: 1,
-          },
-        ],
-        mode: "payment",
-        success_url: successUrl || `${process.env.NEXTAUTH_URL}/client/dashboard?success=true`,
-        cancel_url: cancelUrl || `${process.env.NEXTAUTH_URL}/signup?canceled=true`,
-        metadata: { clientId: clientId || "", package: pkg, disputes: String(DISPUTE_PACKAGES[pkg].disputes), type: "package" },
-      });
-    } else {
-      session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: { name: `ClearCredit ${SUBSCRIPTION_PLANS[plan].name} — ${SUBSCRIPTION_PLANS[plan].disputes} Disputes/mo` },
-              unit_amount: SUBSCRIPTION_PLANS[plan].amount,
-              recurring: { interval: "month" },
+          ],
+          mode: "payment",
+          success_url: successRedirect,
+          cancel_url: cancelRedirect,
+          metadata: { clientId: client.id, package: pkg!, disputes: String(DISPUTE_PACKAGES[pkg!].disputes), type: "package" },
+        })
+      : await stripe.checkout.sessions.create({
+          customer: customerId,
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: { name: `ClearCredit ${SUBSCRIPTION_PLANS[plan!].name} — ${SUBSCRIPTION_PLANS[plan!].disputes} Disputes/mo` },
+                unit_amount: SUBSCRIPTION_PLANS[plan!].amount,
+                recurring: { interval: "month" },
+              },
+              quantity: 1,
             },
-            quantity: 1,
-          },
-        ],
-        mode: "subscription",
-        success_url: successUrl || `${process.env.NEXTAUTH_URL}/client/dashboard?success=true`,
-        cancel_url: cancelUrl || `${process.env.NEXTAUTH_URL}/signup?canceled=true`,
-        metadata: { clientId: clientId || "", plan, disputes: String(SUBSCRIPTION_PLANS[plan].disputes), type: "subscription" },
-      });
-    }
+          ],
+          mode: "subscription",
+          success_url: successRedirect,
+          cancel_url: cancelRedirect,
+          metadata: { clientId: client.id, plan: plan!, disputes: String(SUBSCRIPTION_PLANS[plan!].disputes), type: "subscription" },
+        });
 
     return NextResponse.json({ sessionId: session.id, url: session.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Stripe checkout error:", error);
-    return NextResponse.json({ error: error.message || "Failed to create checkout session" }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error, "Failed to create checkout session") }, { status: 500 });
   }
 }

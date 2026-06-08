@@ -78,7 +78,7 @@ const statusColor = (status: string) => {
 };
 
 export default function ClientDashboard() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,8 +140,8 @@ export default function ClientDashboard() {
       const me = await meRes.json();
       const reportsData = await reportsRes.json();
       if (me.client) setClientData({ ...me.client, creditReports: reportsData.reports || [] });
-    } catch (err: any) {
-      setUploadError(err.message || "Upload failed");
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploadLoading(false);
     }
@@ -162,8 +162,8 @@ export default function ClientDashboard() {
       const me = await meRes.json();
       const reportsData = await reportsRes.json();
       if (me.client) setClientData({ ...me.client, creditReports: reportsData.reports || [] });
-    } catch (err: any) {
-      alert(err.message || "Analysis failed");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Analysis failed");
     } finally {
       setAnalyzeLoading(null);
     }
