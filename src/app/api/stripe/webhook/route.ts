@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { stripe, SUBSCRIPTION_PLANS } from "@/lib/stripe";
 
+export const runtime = "nodejs";
+
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 type StripeInvoiceWithSubscription = Stripe.Invoice & {
@@ -16,13 +18,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
   }
 
-  const payload = await request.text();
   const signature = request.headers.get("stripe-signature") || "";
+  const payloadBuffer = Buffer.from(await request.arrayBuffer());
 
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(payloadBuffer, signature, webhookSecret);
   } catch (err: unknown) {
     console.error("Webhook signature verification failed:", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });

@@ -3,6 +3,7 @@ import { stripe, DISPUTE_PACKAGES, SUBSCRIPTION_PLANS } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 import { getRequestUser, canAccessClient } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/errors";
+import { buildPublicUrl, getPublicOrigin } from "@/lib/url";
 
 type CheckoutBody = {
   email?: string;
@@ -15,17 +16,19 @@ type CheckoutBody = {
 };
 
 function normalizeRedirectUrl(url: string | undefined, request: NextRequest, fallbackPath: string): string | null {
+  const publicOrigin = getPublicOrigin(request);
+
   if (!url) {
-    return new URL(fallbackPath, request.nextUrl.origin).toString();
+    return buildPublicUrl(fallbackPath, request);
   }
 
   if (url.startsWith("/") && !url.startsWith("//")) {
-    return new URL(url, request.nextUrl.origin).toString();
+    return buildPublicUrl(url, request);
   }
 
   try {
     const parsed = new URL(url);
-    return parsed.origin === request.nextUrl.origin ? parsed.toString() : null;
+    return parsed.origin === publicOrigin ? parsed.toString() : null;
   } catch {
     return null;
   }

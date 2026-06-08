@@ -270,8 +270,8 @@ export default function ClientDashboard() {
                       name: clientData?.name,
                       package: pkg,
                       clientId: clientData?.id,
-                      successUrl: `${window.location.origin}/client/dashboard?success=true`,
-                      cancelUrl: `${window.location.origin}/client/billing?canceled=true`,
+                      successUrl: "/client/dashboard?success=true",
+                      cancelUrl: "/client/billing?canceled=true",
                     }),
                   })
                     .then((r) => r.json())
