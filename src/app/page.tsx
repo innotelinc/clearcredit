@@ -78,6 +78,7 @@ const packages = [
     name: "Basic",
     price: "$149",
     description: "Great for getting started with a few disputes.",
+    billingLabel: "one-time",
     features: ["3 AI-generated dispute letters", "FCRA-compliant formatting", "Email support", "Progress tracking"],
     cta: "Get Started",
     highlighted: false,
@@ -86,6 +87,7 @@ const packages = [
     name: "Standard",
     price: "$299",
     description: "Our most popular package for comprehensive credit repair.",
+    billingLabel: "one-time",
     features: [
       "7 AI-generated dispute letters",
       "FCRA-compliant formatting",
@@ -100,6 +102,7 @@ const packages = [
     name: "Premium",
     price: "$499",
     description: "Maximum coverage for clients with extensive repair needs.",
+    billingLabel: "one-time",
     features: [
       "15 AI-generated dispute letters",
       "FCRA-compliant formatting",
@@ -108,6 +111,36 @@ const packages = [
       "Dedicated specialist",
     ],
     cta: "Contact Sales",
+    highlighted: false,
+  },
+];
+
+const monthlyPlans = [
+  {
+    name: "Basic Monthly",
+    price: "$49",
+    description: "Recurring entry plan for steady monthly dispute work.",
+    billingLabel: "/mo",
+    features: ["3 disputes per month", "3 AI-generated dispute letters / month", "FCRA-compliant formatting", "Email support", "Auto-renewing credits"],
+    cta: "Start Monthly Plan",
+    highlighted: false,
+  },
+  {
+    name: "Standard Monthly",
+    price: "$99",
+    description: "Balanced monthly plan for active clients who need ongoing progress.",
+    billingLabel: "/mo",
+    features: ["7 disputes per month", "7 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Progress tracking", "Auto-renewing credits"],
+    cta: "Choose Standard Monthly",
+    highlighted: true,
+  },
+  {
+    name: "Premium Monthly",
+    price: "$149",
+    description: "Maximum recurring coverage with dedicated support and monthly renewals.",
+    billingLabel: "/mo",
+    features: ["15 disputes per month", "15 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Dedicated specialist", "Auto-renewing credits"],
+    cta: "Choose Premium Monthly",
     highlighted: false,
   },
 ];
@@ -184,14 +217,14 @@ export default async function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <div className="flex items-center gap-6 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-success" />
                   No setup fees
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-success" />
-                  One-time purchase
+                  One-time or monthly plans
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-success" />
@@ -349,50 +382,102 @@ export default async function HomePage() {
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Simple, Transparent Pricing</h2>
             <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Choose the dispute package that fits your needs. All packages include AI-generated FCRA dispute letters.
+              Choose a one-time dispute package or a monthly subscription. Every option includes AI-generated FCRA dispute letters.
             </p>
           </div>
-          <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
-            {packages.map((pkg) => (
-              <Card
-                key={pkg.name}
-                className={`relative flex flex-col ${
-                  pkg.highlighted
-                    ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
-                    : "border-border/60"
-                }`}
-              >
-                {pkg.highlighted && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
-                    Most Popular
-                  </div>
-                )}
-                <CardContent className="flex flex-1 flex-col p-6">
-                  <h3 className="text-lg font-semibold">{pkg.name}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{pkg.description}</p>
-                  <div className="mt-4 flex items-baseline">
-                    <span className="text-4xl font-bold">{pkg.price}</span>
-                    <span className="ml-1 text-sm text-muted-foreground">one-time</span>
-                  </div>
-                  <ul className="mt-6 space-y-3 flex-1">
-                    {pkg.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link href="/signup" className="mt-6">
-                    <Button
-                      variant={pkg.highlighted ? "primary" : "outline"}
-                      className="w-full"
-                    >
-                      {pkg.cta}
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            ))}
+
+          <div className="space-y-16">
+            <div>
+              <div className="mb-6 text-center">
+                <h3 className="text-2xl font-semibold tracking-tight">One-Time Packages</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Pay once for a fixed number of dispute credits.</p>
+              </div>
+              <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
+                {packages.map((pkg) => (
+                  <Card
+                    key={pkg.name}
+                    className={`relative flex flex-col ${
+                      pkg.highlighted
+                        ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
+                        : "border-border/60"
+                    }`}
+                  >
+                    {pkg.highlighted && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
+                        Most Popular
+                      </div>
+                    )}
+                    <CardContent className="flex flex-1 flex-col p-6">
+                      <h3 className="text-lg font-semibold">{pkg.name}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{pkg.description}</p>
+                      <div className="mt-4 flex items-baseline">
+                        <span className="text-4xl font-bold">{pkg.price}</span>
+                        <span className="ml-1 text-sm text-muted-foreground">{pkg.billingLabel}</span>
+                      </div>
+                      <ul className="mt-6 space-y-3 flex-1">
+                        {pkg.features.map((f) => (
+                          <li key={f} className="flex items-start gap-2 text-sm">
+                            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <Link href="/signup" className="mt-6">
+                        <Button variant={pkg.highlighted ? "primary" : "outline"} className="w-full">
+                          {pkg.cta}
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-6 text-center">
+                <h3 className="text-2xl font-semibold tracking-tight">Monthly Subscriptions</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Auto-renewing monthly dispute credits for ongoing credit repair.</p>
+              </div>
+              <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
+                {monthlyPlans.map((plan) => (
+                  <Card
+                    key={plan.name}
+                    className={`relative flex flex-col ${
+                      plan.highlighted
+                        ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
+                        : "border-border/60"
+                    }`}
+                  >
+                    {plan.highlighted && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
+                        Best Subscription Value
+                      </div>
+                    )}
+                    <CardContent className="flex flex-1 flex-col p-6">
+                      <h3 className="text-lg font-semibold">{plan.name}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
+                      <div className="mt-4 flex items-baseline">
+                        <span className="text-4xl font-bold">{plan.price}</span>
+                        <span className="ml-1 text-sm text-muted-foreground">{plan.billingLabel}</span>
+                      </div>
+                      <ul className="mt-6 space-y-3 flex-1">
+                        {plan.features.map((f) => (
+                          <li key={f} className="flex items-start gap-2 text-sm">
+                            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <Link href="/signup" className="mt-6">
+                        <Button variant={plan.highlighted ? "primary" : "outline"} className="w-full">
+                          {plan.cta}
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
