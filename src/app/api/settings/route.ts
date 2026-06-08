@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/errors";
+import { getLlmStatus } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
-import { buildPublicUrl } from "@/lib/url";
 import { getReportProviderMode, isRealProviderConfigured } from "@/lib/report-provider";
+import { buildPublicUrl } from "@/lib/url";
 
 async function getAdminBusiness(userId: string) {
   const user = await prisma.user.findUnique({
@@ -32,7 +33,12 @@ export async function GET(request: NextRequest) {
       integrations: {
         stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY),
         webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
-        openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
+        llmConfigured: getLlmStatus().configured,
+        llmBackend: getLlmStatus().backend,
+        llmDisplayName: getLlmStatus().displayName,
+        llmBaseUrl: getLlmStatus().baseURL,
+        llmAnalysisModel: getLlmStatus().analysisModel,
+        llmLetterModel: getLlmStatus().letterModel,
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         reportProviderConfigured: isRealProviderConfigured(),
       },

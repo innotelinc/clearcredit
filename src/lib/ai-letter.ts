@@ -1,13 +1,7 @@
-import OpenAI from "openai";
+import { generateLlmText } from "@/lib/llm";
 import { prisma } from "./prisma";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export async function generateDisputeLetter(disputeItemId: string) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OpenAI API key not configured");
-  }
-
   const dispute = await prisma.disputeItem.findUnique({
     where: { id: disputeItemId },
     include: { client: true, report: true },
@@ -35,23 +29,19 @@ The letter should:
 
 Return ONLY the letter content with no extra commentary.`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "You are an expert legal assistant specializing in Fair Credit Reporting Act (FCRA) dispute letters." },
-      { role: "user", content: prompt },
-    ],
+  const response = await generateLlmText({
+    task: "letter",
+    system: "You are an expert legal assistant specializing in Fair Credit Reporting Act (FCRA) dispute letters.",
+    user: prompt,
     temperature: 0.7,
-    max_tokens: 1500,
+    maxTokens: 1500,
   });
-
-  const letterContent = completion.choices[0]?.message?.content || "";
 
   const letter = await prisma.disputeLetter.create({
     data: {
       disputeItemId: dispute.id,
       templateType: "AI_GENERATED_FCRA",
-      content: letterContent,
+      content: response.text,
     },
   });
 
@@ -59,7 +49,7 @@ Return ONLY the letter content with no extra commentary.`;
     data: {
       clientId: dispute.clientId,
       action: "LETTER_GENERATED",
-      details: `AI-generated FCRA letter for ${dispute.bureau} dispute`,
+      details: `AI-generated FCRA letter for ${dispute.bureau} dispute using ${response.backend}/${response.model}`,
     },
   });
 
