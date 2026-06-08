@@ -1,17 +1,13 @@
-import OpenAI from "openai";
 import { generateDisputeLetter } from "@/lib/ai-letter";
 import { HttpError, isAdmin, type AccessUser } from "@/lib/access-control";
 import { recordCreditChange } from "@/lib/credits";
+import { generateLlmText } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 import {
   buildFallbackDisputeCandidates,
   parseStructuredCreditReport,
   type StructuredCreditReport,
 } from "@/lib/report-parsing";
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
 
 interface ParsedDisputeCandidate {
   bureau?: string;
@@ -121,10 +117,6 @@ function normalizeCandidates(items: ParsedDisputeCandidate[], defaultBureau: str
 }
 
 async function extractAiCandidates(report: StructuredCreditReport, rawData: string) {
-  if (!openai) {
-    return [] as ParsedDisputeCandidate[];
-  }
-
   const prompt = `You are an expert credit report analyst. Use the structured report JSON and the raw report excerpt to identify disputable items under the FCRA.
 
 Structured report JSON:
@@ -137,21 +129,15 @@ ${rawData.slice(0, 8000)}
 
 Return ONLY a valid JSON array. Each item must include: bureau, type, description, creditor, accountNumber, amount, confidenceScore, reason.`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: "You are a credit report dispute analyst. Always respond with only valid JSON arrays.",
-      },
-      { role: "user", content: prompt },
-    ],
+  const response = await generateLlmText({
+    task: "analysis",
+    system: "You are a credit report dispute analyst. Always respond with only valid JSON arrays.",
+    user: prompt,
     temperature: 0.1,
-    max_tokens: 3000,
+    maxTokens: 3000,
   });
 
-  const content = completion.choices[0]?.message?.content || "";
-  return parseDisputeCandidates(content);
+  return parseDisputeCandidates(response.text);
 }
 
 export async function analyzeCreditReport({

@@ -22,6 +22,7 @@ AI-assisted credit repair platform built with Next.js, Prisma, NextAuth, and Str
 - Stripe checkout, billing portal, and webhook handling
 - Service contracts, invoices, activity logs, and client management
 - Admin settings interface and automation status visibility
+- Configurable LLM backends: OpenAI, OpenRouter, or Mirrowel LLM-API-Key-Proxy
 
 ## Local Setup
 ```bash
@@ -40,7 +41,33 @@ NEXTAUTH_URL=http://localhost:3000
 PUBLIC_APP_URL=http://localhost:3000
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+RESEND_API_KEY=re_...
+
+# Choose one LLM backend: openai, openrouter, or proxy
+LLM_BACKEND=openrouter
+LLM_MODEL=openai/gpt-4o-mini
+LLM_ANALYSIS_MODEL=openai/gpt-4o-mini
+LLM_LETTER_MODEL=openai/gpt-4o-mini
+
+# Direct OpenAI backend
 OPENAI_API_KEY=sk-...
+# OPENAI_MODEL=gpt-4o-mini
+# OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Direct OpenRouter backend
+OPENROUTER_API_KEY=sk-or-...
+# OPENROUTER_MODEL=openai/gpt-4o-mini
+# OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# OPENROUTER_APP_NAME=ClearCredit
+
+# Mirrowel LLM-API-Key-Proxy backend
+# LLM_BACKEND=proxy
+# LLM_PROXY_BASE_URL=http://127.0.0.1:8000/v1
+# LLM_PROXY_API_KEY=your_proxy_api_key
+# or reuse Mirrowel's native env name:
+# PROXY_API_KEY=your_proxy_api_key
+# LLM_PROXY_MODEL=openrouter/openai/gpt-4o-mini
+
 REPORT_PULL_MODE=mock
 AUTO_ANALYZE_PULLED_REPORTS=true
 # Generic real-provider mode
@@ -51,6 +78,25 @@ AUTO_ANALYZE_PULLED_REPORTS=true
 # REPORT_PROVIDER_STATUS_PATH=/reports/:id
 # REPORT_PROVIDER_WEBHOOK_SECRET=shared_secret
 ```
+
+## Mirrowel LLM-API-Key-Proxy Integration
+ClearCredit supports Mirrowel's proxy through the standard OpenAI-compatible `/v1/chat/completions` endpoint.
+
+1. Start the proxy from https://github.com/Mirrowel/LLM-API-Key-Proxy
+2. Configure provider keys inside the proxy (including OpenRouter if desired)
+3. Point ClearCredit at the proxy:
+
+```env
+LLM_BACKEND=proxy
+LLM_PROXY_BASE_URL=http://127.0.0.1:8000/v1
+PROXY_API_KEY=your_proxy_api_key
+LLM_PROXY_MODEL=openrouter/openai/gpt-4o-mini
+```
+
+The proxy expects models in `provider/model_name` format, for example:
+- `openrouter/openai/gpt-4o-mini`
+- `openrouter/anthropic/claude-3.5-sonnet`
+- `openai/gpt-4o-mini`
 
 ## Useful Commands
 ```bash
@@ -78,6 +124,7 @@ Subscribe to:
 - Automatic report pulling is wired behind `/api/reports/pull`.
 - Provider callbacks are handled at `/api/reports/provider-webhook`.
 - Admins can trigger a full automation cycle from Settings or `POST /api/automation/run`.
+- LLM-backed analysis and letter generation now run through the shared backend adapter in `src/lib/llm.ts`.
 - For local/demo automation, set `REPORT_PULL_MODE=mock`.
 - For real provider mode, configure the generic provider environment values shown above.
 

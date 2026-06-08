@@ -20,7 +20,12 @@ interface SettingsResponse {
   integrations: {
     stripeConfigured: boolean;
     webhookConfigured: boolean;
-    openAiConfigured: boolean;
+    llmConfigured: boolean;
+    llmBackend: string | null;
+    llmDisplayName: string | null;
+    llmBaseUrl: string | null;
+    llmAnalysisModel: string | null;
+    llmLetterModel: string | null;
     resendConfigured: boolean;
     reportProviderConfigured: boolean;
   };
@@ -134,10 +139,10 @@ export default function AdminSettingsPage() {
 
   const integrationCards = data
     ? [
-        { label: "Stripe", ok: data.integrations.stripeConfigured && data.integrations.webhookConfigured, icon: CreditCard },
-        { label: "OpenAI", ok: data.integrations.openAiConfigured, icon: Sparkles },
-        { label: "Resend", ok: data.integrations.resendConfigured, icon: Mail },
-        { label: "Report Provider", ok: data.integrations.reportProviderConfigured || data.automation.reportPullMode === "mock", icon: Bot },
+        { label: "Stripe", ok: data.integrations.stripeConfigured && data.integrations.webhookConfigured, icon: CreditCard, detail: data.integrations.webhookConfigured ? "Checkout + webhooks ready" : "Missing key or webhook secret" },
+        { label: data.integrations.llmDisplayName || "LLM Backend", ok: data.integrations.llmConfigured, icon: Sparkles, detail: data.integrations.llmConfigured ? `${data.integrations.llmBackend} · ${data.integrations.llmAnalysisModel || "No model"}` : "Set LLM_BACKEND and matching keys" },
+        { label: "Resend", ok: data.integrations.resendConfigured, icon: Mail, detail: data.integrations.resendConfigured ? "Email delivery ready" : "Missing RESEND_API_KEY" },
+        { label: "Report Provider", ok: data.integrations.reportProviderConfigured || data.automation.reportPullMode === "mock", icon: Bot, detail: data.integrations.reportProviderConfigured ? "Real provider ready" : data.automation.reportPullMode === "mock" ? "Mock/demo mode enabled" : "No provider configured" },
       ]
     : [];
 
@@ -177,6 +182,7 @@ export default function AdminSettingsPage() {
                       <div>
                         <p className="text-sm text-muted-foreground">{item.label}</p>
                         <p className="mt-1 text-lg font-semibold">{item.ok ? "Configured" : "Needs attention"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                       </div>
                       <div className="flex items-center gap-2"><Badge variant={item.ok ? "success" : "warning"}>{item.ok ? "Ready" : "Missing"}</Badge><item.icon className="h-5 w-5 text-primary" /></div>
                     </CardContent>
@@ -188,14 +194,19 @@ export default function AdminSettingsPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Automation Control Center</CardTitle>
-                    <CardDescription>Provider-backed report pulling, structured parsing, and follow-up automation.</CardDescription>
+                    <CardDescription>Provider-backed report pulling, structured parsing, follow-up automation, and configurable LLM backends.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm">
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Report pull mode</p><p className="mt-1 font-semibold">{data.automation.reportPullMode}</p></div>
-                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Auto analyze</p><p className="mt-1 font-semibold">{data.automation.autoAnalyzePulledReports ? "Enabled" : "Disabled"}</p></div>
-                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provider URL</p><p className="mt-1 break-all font-semibold">{data.automation.providerBaseUrl || "Not configured"}</p></div>
-                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Webhook callback</p><p className="mt-1 break-all font-semibold">{data.automation.callbackUrl}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">LLM backend</p><p className="mt-1 font-semibold">{data.integrations.llmDisplayName || "Not configured"}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Analysis model</p><p className="mt-1 break-all font-semibold">{data.integrations.llmAnalysisModel || "Not configured"}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Letter model</p><p className="mt-1 break-all font-semibold">{data.integrations.llmLetterModel || "Not configured"}</p></div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">LLM endpoint</p><p className="mt-1 break-all font-semibold">{data.integrations.llmBaseUrl || "Not configured"}</p></div>
+                      <div className="rounded-lg border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Provider webhook callback</p><p className="mt-1 break-all font-semibold">{data.automation.callbackUrl}</p></div>
                     </div>
 
                     <div className="rounded-lg border bg-muted/20 p-4">
@@ -214,7 +225,7 @@ export default function AdminSettingsPage() {
 
                     <div className="flex flex-wrap items-center gap-3">
                       <Button onClick={runAutomation} isLoading={runningAutomation}><Play className="h-4 w-4" />Run automation now</Button>
-                      <p className="text-muted-foreground">Use generic provider mode for a real provider integration, or mock mode for local demos.</p>
+                      <p className="text-muted-foreground">Supported LLM backends: direct OpenAI, OpenRouter, and Mirrowel LLM-API-Key-Proxy.</p>
                     </div>
                   </CardContent>
                 </Card>
