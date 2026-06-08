@@ -261,28 +261,11 @@ export default function ClientDashboard() {
                 variant="outline"
                 className="mt-3 w-full"
                 onClick={() => {
-                  const pkg = clientData?.disputePackage || "standard";
-                  fetch("/api/stripe/checkout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      email: clientData?.email,
-                      name: clientData?.name,
-                      package: pkg,
-                      clientId: clientData?.id,
-                      successUrl: "/client/dashboard?success=true",
-                      cancelUrl: "/client/billing?canceled=true",
-                    }),
-                  })
-                    .then((r) => r.json())
-                    .then((data) => {
-                      if (data.url) window.location.href = data.url;
-                    })
-                    .catch(() => alert("Failed to start checkout. Please try again."));
+                  router.push("/client/billing");
                 }}
               >
                 <CreditCard className="h-3 w-3 mr-1" />
-                Buy More Credits
+Manage Billing
               </Button>
             </CardContent>
           </Card>

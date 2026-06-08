@@ -1,99 +1,122 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import {
+  assertCanAccessClient,
+  isAdmin,
+  requireRequestUser,
+} from "@/lib/access-control";
+import { getErrorMessage } from "@/lib/errors";
+import { recordCreditChange } from "@/lib/credits";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-      include: { clients: { select: { id: true } } },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    const isAdmin = user.role === "ADMIN";
-    const clientIds = user.clients.map((c) => c.id);
+    const user = await requireRequestUser(request);
 
     const disputes = await prisma.disputeItem.findMany({
-      where: isAdmin ? undefined : { clientId: { in: clientIds } },
-      include: { client: { select: { id: true, name: true, email: true } }, report: { select: { id: true, bureau: true } }, letters: { select: { id: true, templateType: true, generatedAt: true } } },
+      where: isAdmin(user) ? undefined : { clientId: { in: user.clientIds } },
+      include: {
+        client: { select: { id: true, name: true, email: true } },
+        report: { select: { id: true, bureau: true } },
+        letters: { select: { id: true, templateType: true, generatedAt: true, content: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json(disputes);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Get disputes error:", error);
-    return NextResponse.json({ error: "Failed to fetch disputes" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to fetch disputes");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await requireRequestUser(request);
+    const body = (await request.json()) as {
+      reportId?: string;
+      clientId?: string;
+      bureau?: string;
+      type?: string;
+      description?: string;
+      creditor?: string | null;
+      accountNumber?: string | null;
+      amount?: string | null;
+      dateReported?: string | null;
+    };
+
+    if (!body.clientId || !body.reportId || !body.type || !body.description || !body.bureau) {
+      return NextResponse.json({ error: "Client, report, bureau, type, and description are required" }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { reportId, clientId, bureau, type, description, creditor, accountNumber, amount, dateReported } = body;
+    assertCanAccessClient(user, body.clientId);
 
-    const user = await prisma.user.findUnique({
-      where: { email: token.email },
-      include: { clients: { select: { id: true } } },
-    });
-
-    const isAdmin = user?.role === "ADMIN";
-    const ownsClient = user?.clients.some((c) => c.id === clientId) ?? false;
-
-    if (!isAdmin && !ownsClient) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const client = await prisma.client.findUnique({ where: { id: body.clientId } });
+    if (!client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
     }
-
-    const client = await prisma.client.findUnique({ where: { id: clientId } });
-    if (!client || client.disputeCredits <= 0) {
+    if (client.disputeCredits <= 0) {
       return NextResponse.json({ error: "Client has no remaining dispute credits" }, { status: 403 });
     }
 
-    const dispute = await prisma.disputeItem.create({
-      data: {
-        reportId,
-        clientId,
-        bureau,
-        type,
-        description,
-        creditor,
-        accountNumber,
-        amount,
-        dateReported: dateReported ? new Date(dateReported) : undefined,
-      },
-      include: { client: { select: { id: true, name: true, email: true } } },
-    });
-
-    const newCredits = Math.max(0, client.disputeCredits - 1);
-    await prisma.client.update({
-      where: { id: clientId },
-      data: { disputeCredits: newCredits },
-    });
-
-    // Low-credit email alert
-    if (newCredits <= 2 && newCredits > 0) {
-      const { sendLowCreditAlert } = await import("@/lib/email");
-      await sendLowCreditAlert(client.email, client.name, newCredits).catch(() => {});
+    const report = await prisma.creditReport.findUnique({ where: { id: body.reportId } });
+    if (!report || report.clientId !== body.clientId) {
+      return NextResponse.json({ error: "Credit report not found for client" }, { status: 404 });
     }
 
-    await prisma.activityLog.create({
-      data: { clientId, action: "DISPUTE_CREATED", details: `Dispute created: ${type}` },
+    let disputeId = "";
+    let remainingCredits = client.disputeCredits;
+
+    const dispute = await prisma.$transaction(async (tx) => {
+      const created = await tx.disputeItem.create({
+        data: {
+          reportId: body.reportId!,
+          clientId: body.clientId!,
+          bureau: body.bureau!,
+          type: body.type!,
+          description: body.description!,
+          creditor: body.creditor || null,
+          accountNumber: body.accountNumber || null,
+          amount: body.amount || null,
+          dateReported: body.dateReported ? new Date(body.dateReported) : undefined,
+        },
+        include: { client: { select: { id: true, name: true, email: true } } },
+      });
+
+      disputeId = created.id;
+
+      const updatedClient = await recordCreditChange({
+        tx,
+        clientId: body.clientId!,
+        amount: 1,
+        type: "debit",
+        source: "MANUAL_DISPUTE",
+        description: `Manual dispute created: ${body.type}`,
+      });
+      remainingCredits = updatedClient.disputeCredits;
+
+      await tx.activityLog.create({
+        data: {
+          clientId: body.clientId!,
+          action: "DISPUTE_CREATED",
+          details: `Dispute created: ${body.type}`,
+        },
+      });
+
+      return created;
     });
 
-    return NextResponse.json({ ...dispute, remainingCredits: newCredits }, { status: 201 });
-  } catch (error) {
+    if (remainingCredits <= 2 && remainingCredits > 0) {
+      const { sendLowCreditAlert } = await import("@/lib/email");
+      await sendLowCreditAlert(client.email, client.name, remainingCredits).catch(() => undefined);
+    }
+
+    return NextResponse.json({ ...dispute, disputeId, remainingCredits }, { status: 201 });
+  } catch (error: unknown) {
     console.error("Create dispute error:", error);
-    return NextResponse.json({ error: "Failed to create dispute" }, { status: 500 });
+    const message = getErrorMessage(error, "Failed to create dispute");
+    const status = error instanceof Error && "status" in error ? Number(error.status) : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

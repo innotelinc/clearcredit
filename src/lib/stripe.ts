@@ -49,3 +49,25 @@ export const SUBSCRIPTION_PLANS: Record<string, { priceId: string; amount: numbe
     disputes: 15,
   },
 };
+
+export function isConfiguredStripePriceId(priceId: string) {
+  return priceId.startsWith("price_");
+}
+
+export function getDisputePackage(packageKey: string) {
+  return DISPUTE_PACKAGES[packageKey as keyof typeof DISPUTE_PACKAGES] || null;
+}
+
+export function getSubscriptionPlan(planKey: string) {
+  return SUBSCRIPTION_PLANS[planKey as keyof typeof SUBSCRIPTION_PLANS] || null;
+}
+
+export function findDisputePackageByPriceId(priceId?: string | null) {
+  if (!priceId) return null;
+  return Object.entries(DISPUTE_PACKAGES).find(([, value]) => value.priceId === priceId) || null;
+}
+
+export function findSubscriptionPlanByPriceId(priceId?: string | null) {
+  if (!priceId) return null;
+  return Object.entries(SUBSCRIPTION_PLANS).find(([, value]) => value.priceId === priceId) || null;
+}

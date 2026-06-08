@@ -16,24 +16,47 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  async function resolveDestination() {
+    const callbackUrl =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("callbackUrl")
+        : null;
+    if (callbackUrl?.startsWith("/")) {
+      return callbackUrl;
+    }
+
+    const meRes = await fetch("/api/me");
+    const me = await meRes.json();
+    if (me?.user?.role === "ADMIN") {
+      return "/admin/dashboard";
+    }
+    return "/client/dashboard";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const res = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
 
-    setLoading(false);
+      if (res?.error) {
+        setError("Invalid email or password");
+        return;
+      }
 
-    if (res?.error) {
-      setError("Invalid email or password");
-    } else {
-      router.push("/admin/dashboard");
+      const destination = await resolveDestination();
+      router.push(destination);
       router.refresh();
+    } catch {
+      setError("Unable to sign in right now. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -44,12 +67,8 @@ export default function LoginPage() {
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20 mb-4">
             <Shield className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Welcome to ClearCredit
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Sign in to your account to continue
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Welcome to ClearCredit</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Sign in to your account to continue</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-xl shadow-slate-200/50">
@@ -65,15 +84,7 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                />
+                <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
               </div>
             </div>
 
@@ -81,34 +92,19 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
-                  required
-                />
+                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
               </div>
             </div>
 
-            <Button type="submit" className="w-full" isLoading={loading}>
-              Sign In
-            </Button>
+            <Button type="submit" className="w-full" isLoading={loading}>Sign In</Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
-              Sign up as a client
-            </Link>
+            Don&apos;t have an account? <Link href="/signup" className="font-medium text-primary hover:underline">Sign up as a client</Link>
           </div>
         </div>
 
-        <p className="mt-8 text-center text-xs text-muted-foreground">
-          Protected by bank-level encryption. Your data is secure with us.
-        </p>
+        <p className="mt-8 text-center text-xs text-muted-foreground">Protected by bank-level encryption. Your data is secure with us.</p>
       </div>
     </div>
   );

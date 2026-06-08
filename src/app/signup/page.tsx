@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import {
   Shield,
@@ -165,6 +166,22 @@ export default function SignupPage() {
       }
 
       const registration = await registrationRes.json();
+
+      const signInResult = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      });
+
+      if (signInResult?.error) {
+        throw new Error("Account created, but automatic sign-in failed. Please log in manually to continue.");
+      }
+
+      await fetch("/api/reports/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: registration.clientId, autoAnalyze: true }),
+      }).catch(() => undefined);
 
       const checkoutPayload: {
         email: string;
