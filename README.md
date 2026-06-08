@@ -41,6 +41,15 @@ PUBLIC_APP_URL=http://localhost:3000
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 OPENAI_API_KEY=sk-...
+REPORT_PULL_MODE=mock
+AUTO_ANALYZE_PULLED_REPORTS=true
+# Generic real-provider mode
+# REPORT_PULL_MODE=generic
+# REPORT_PROVIDER_BASE_URL=https://provider.example.com
+# REPORT_PROVIDER_API_KEY=provider_api_key
+# REPORT_PROVIDER_CREATE_PATH=/reports/pull
+# REPORT_PROVIDER_STATUS_PATH=/reports/:id
+# REPORT_PROVIDER_WEBHOOK_SECRET=shared_secret
 ```
 
 ## Useful Commands
@@ -67,8 +76,10 @@ Subscribe to:
 ## Automation Notes
 - Uploaded credit reports can be analyzed into disputes automatically.
 - Automatic report pulling is wired behind `/api/reports/pull`.
+- Provider callbacks are handled at `/api/reports/provider-webhook`.
+- Admins can trigger a full automation cycle from Settings or `POST /api/automation/run`.
 - For local/demo automation, set `REPORT_PULL_MODE=mock`.
-- A real production auto-pull flow still requires a connected third-party report provider and its credentials.
+- For real provider mode, configure the generic provider environment values shown above.
 
 ## CI
 GitHub Actions validates:

@@ -3,6 +3,11 @@ import { generateDisputeLetter } from "@/lib/ai-letter";
 import { HttpError, isAdmin, type AccessUser } from "@/lib/access-control";
 import { recordCreditChange } from "@/lib/credits";
 import { prisma } from "@/lib/prisma";
+import {
+  buildFallbackDisputeCandidates,
+  parseStructuredCreditReport,
+  type StructuredCreditReport,
+} from "@/lib/report-parsing";
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -45,19 +50,14 @@ export interface AnalyzeCreditReportResult {
 function parseDisputeCandidates(content: string): ParsedDisputeCandidate[] {
   const firstBracket = content.indexOf("[");
   const lastBracket = content.lastIndexOf("]");
-
   if (firstBracket === -1 || lastBracket === -1 || lastBracket <= firstBracket) {
     return [];
   }
 
   const parsed = JSON.parse(content.slice(firstBracket, lastBracket + 1)) as unknown;
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  return parsed.filter(
-    (item): item is ParsedDisputeCandidate => typeof item === "object" && item !== null,
-  );
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is ParsedDisputeCandidate => typeof item === "object" && item !== null)
+    : [];
 }
 
 function buildCandidateKey(candidate: {
@@ -76,28 +76,14 @@ function buildCandidateKey(candidate: {
   ].join("::");
 }
 
-function normalizeCandidates(
-  items: ParsedDisputeCandidate[],
-  defaultBureau: string,
-): Array<{
-  bureau: string;
-  type: string;
-  description: string;
-  creditor: string | null;
-  accountNumber: string | null;
-  amount: string | null;
-  confidenceScore: number | null;
-  reason: string | null;
-}> {
+function normalizeCandidates(items: ParsedDisputeCandidate[], defaultBureau: string) {
   const seen = new Set<string>();
 
   return items
     .map((item) => {
       const type = item.type?.trim();
       const description = item.description?.trim();
-      if (!type || !description) {
-        return null;
-      }
+      if (!type || !description) return null;
 
       const candidate = {
         bureau: item.bureau?.trim() || defaultBureau || "Unknown",
@@ -114,10 +100,7 @@ function normalizeCandidates(
       };
 
       const key = buildCandidateKey(candidate);
-      if (seen.has(key)) {
-        return null;
-      }
-
+      if (seen.has(key)) return null;
       seen.add(key);
       return candidate;
     })
@@ -135,6 +118,40 @@ function normalizeCandidates(
         reason: string | null;
       } => item !== null,
     );
+}
+
+async function extractAiCandidates(report: StructuredCreditReport, rawData: string) {
+  if (!openai) {
+    return [] as ParsedDisputeCandidate[];
+  }
+
+  const prompt = `You are an expert credit report analyst. Use the structured report JSON and the raw report excerpt to identify disputable items under the FCRA.
+
+Structured report JSON:
+${JSON.stringify(report, null, 2).slice(0, 8000)}
+
+Raw report excerpt:
+"""
+${rawData.slice(0, 8000)}
+"""
+
+Return ONLY a valid JSON array. Each item must include: bureau, type, description, creditor, accountNumber, amount, confidenceScore, reason.`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: "You are a credit report dispute analyst. Always respond with only valid JSON arrays.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.1,
+    max_tokens: 3000,
+  });
+
+  const content = completion.choices[0]?.message?.content || "";
+  return parseDisputeCandidates(content);
 }
 
 export async function analyzeCreditReport({
@@ -157,21 +174,9 @@ export async function analyzeCreditReport({
     },
   });
 
-  if (!report) {
-    throw new HttpError(404, "Report not found");
-  }
-
-  if (!isAdmin(actor) && report.client.userId !== actor.id) {
-    throw new HttpError(403, "Access denied");
-  }
-
-  if (!report.rawData || report.rawData.length < 50) {
-    throw new HttpError(400, "Report has no analyzable data");
-  }
-
-  if (!openai) {
-    throw new HttpError(500, "OpenAI API key not configured");
-  }
+  if (!report) throw new HttpError(404, "Report not found");
+  if (!isAdmin(actor) && report.client.userId !== actor.id) throw new HttpError(403, "Access denied");
+  if (!report.rawData || report.rawData.length < 30) throw new HttpError(400, "Report has no analyzable data");
 
   if (!force && report.analyzedAt && report.disputes.length > 0) {
     return {
@@ -198,51 +203,18 @@ export async function analyzeCreditReport({
     };
   }
 
-  const prompt = `You are an expert credit report analyst. Analyze the following credit report text and extract all negative, inaccurate, outdated, or potentially unverifiable items that should be disputed under the Fair Credit Reporting Act (FCRA).
+  const structured = parseStructuredCreditReport(report.rawData, report.bureau || "Unknown");
+  const fallbackCandidates = buildFallbackDisputeCandidates(structured);
 
-Credit Report:
-"""
-${report.rawData.slice(0, 12000)}
-"""
-
-For each item you identify, provide:
-1. bureau
-2. type
-3. description
-4. creditor
-5. accountNumber
-6. amount
-7. confidenceScore (0-100)
-8. reason
-
-Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks.`;
-
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a credit report dispute analyst. Always respond with only valid JSON arrays.",
-      },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.2,
-    max_tokens: 4000,
-  });
-
-  const content = completion.choices[0]?.message?.content || "";
-  let parsedItems: ParsedDisputeCandidate[] = [];
-
+  let aiCandidates: ParsedDisputeCandidate[] = [];
   try {
-    parsedItems = parseDisputeCandidates(content);
+    aiCandidates = await extractAiCandidates(structured, report.rawData);
   } catch (error) {
-    console.error("Failed to parse AI response", error, content);
-    throw new HttpError(500, "AI response parsing failed");
+    console.error("AI extraction failed; using deterministic parser fallback", error);
   }
 
   const normalizedCandidates = normalizeCandidates(
-    parsedItems,
+    aiCandidates.length ? [...fallbackCandidates, ...aiCandidates] : fallbackCandidates,
     report.bureau || "Unknown",
   );
 
@@ -269,7 +241,7 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
   const candidatesToCreate = creatableCandidates.slice(0, report.client.disputeCredits);
   const skippedDueToCredits = Math.max(0, creatableCandidates.length - candidatesToCreate.length);
 
-  let createdDisputes: Array<{
+  const createdDisputes: Array<{
     id: string;
     bureau: string;
     type: string;
@@ -284,8 +256,6 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
   let remainingCredits = report.client.disputeCredits;
 
   await prisma.$transaction(async (tx) => {
-    createdDisputes = [];
-
     for (const candidate of candidatesToCreate) {
       const dispute = await tx.disputeItem.create({
         data: {
@@ -300,6 +270,7 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
           confidenceScore: candidate.confidenceScore,
           status: "TO_DISPUTE",
           notes: candidate.reason,
+          followUpAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
         },
       });
 
@@ -324,7 +295,7 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
         amount: createdDisputes.length,
         type: "debit",
         source: "REPORT_ANALYSIS",
-        description: `AI-created ${createdDisputes.length} dispute item(s) from uploaded credit report`,
+        description: `AI/structured analysis created ${createdDisputes.length} dispute item(s) from credit report`,
       });
       remainingCredits = updatedClient.disputeCredits;
     }
@@ -332,8 +303,9 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
     await tx.creditReport.update({
       where: { id: report.id },
       data: {
-        parsedData: JSON.stringify(parsedItems),
+        parsedData: JSON.stringify({ structured, aiCandidates }),
         analyzedAt: new Date(),
+        providerStatus: report.providerStatus === "UPLOADED" ? "UPLOADED" : report.providerStatus,
       },
     });
 
@@ -341,15 +313,19 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
       data: {
         clientId: report.clientId,
         action: "REPORT_ANALYZED",
-        details: `AI analyzed ${report.bureau || "credit"} report and identified ${normalizedCandidates.length} disputable item(s). ${createdDisputes.length} created.${skippedDueToCredits ? ` ${skippedDueToCredits} skipped due to insufficient credits.` : ""}`,
+        details: `Structured/AI analysis identified ${normalizedCandidates.length} disputable item(s); ${createdDisputes.length} created.${skippedDueToCredits ? ` ${skippedDueToCredits} skipped due to insufficient credits.` : ""}`,
       },
     });
   });
 
   let lettersGenerated = 0;
-  for (const dispute of createdDisputes.filter((item) => (item.confidenceScore || 0) >= 70)) {
+  for (const dispute of createdDisputes.filter((item) => (item.confidenceScore || 0) >= 65)) {
     try {
       await generateDisputeLetter(dispute.id);
+      await prisma.disputeItem.update({
+        where: { id: dispute.id },
+        data: { status: "DRAFTING", lastAutomatedActionAt: new Date() },
+      });
       lettersGenerated += 1;
     } catch (error) {
       console.error("Auto-letter generation failed for dispute", dispute.id, error);
@@ -358,9 +334,7 @@ Respond ONLY with a valid JSON array. No markdown, no commentary, no code blocks
 
   if (remainingCredits <= 2 && remainingCredits > 0) {
     const { sendLowCreditAlert } = await import("@/lib/email");
-    await sendLowCreditAlert(report.client.email, report.client.name, remainingCredits).catch(
-      () => undefined,
-    );
+    await sendLowCreditAlert(report.client.email, report.client.name, remainingCredits).catch(() => undefined);
   }
 
   return {

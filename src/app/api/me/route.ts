@@ -11,7 +11,15 @@ export async function GET(request: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { email: token.email },
-      include: { clients: { include: { disputes: { orderBy: { createdAt: "desc" } }, contracts: { orderBy: { createdAt: "desc" } }, creditReports: { orderBy: { createdAt: "desc" } } } } },
+      include: {
+        clients: {
+          include: {
+            disputes: { orderBy: { createdAt: "desc" } },
+            contracts: { orderBy: { createdAt: "desc" } },
+            creditReports: { orderBy: { createdAt: "desc" } },
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -38,6 +46,7 @@ export async function GET(request: NextRequest) {
         client: { ...client, email: client.email, name: client.name, disputes, creditReports, invoices },
       });
     }
+
     return NextResponse.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role }, client });
   } catch (error) {
     console.error("Me route error:", error);

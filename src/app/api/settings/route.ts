@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import { buildPublicUrl } from "@/lib/url";
+import { getReportProviderMode, isRealProviderConfigured } from "@/lib/report-provider";
 
 async function getAdminBusiness(userId: string) {
   const user = await prisma.user.findUnique({
@@ -9,10 +11,7 @@ async function getAdminBusiness(userId: string) {
     include: { business: true },
   });
 
-  if (user?.business) {
-    return user.business;
-  }
-
+  if (user?.business) return user.business;
   return prisma.business.findFirst({ orderBy: { createdAt: "asc" } });
 }
 
@@ -20,10 +19,13 @@ export async function GET(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
     const business = await getAdminBusiness(admin.id);
-
     if (!business) {
       return NextResponse.json({ error: "No business found" }, { status: 404 });
     }
+
+    const lastAutomationRun = await prisma.automationRun.findFirst({
+      orderBy: { startedAt: "desc" },
+    });
 
     return NextResponse.json({
       business,
@@ -32,10 +34,14 @@ export async function GET(request: NextRequest) {
         webhookConfigured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
         openAiConfigured: Boolean(process.env.OPENAI_API_KEY),
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
+        reportProviderConfigured: isRealProviderConfigured(),
       },
       automation: {
-        reportPullMode: process.env.REPORT_PULL_MODE || "disabled",
+        reportPullMode: getReportProviderMode(),
         autoAnalyzePulledReports: process.env.AUTO_ANALYZE_PULLED_REPORTS === "true",
+        providerBaseUrl: process.env.REPORT_PROVIDER_BASE_URL || null,
+        callbackUrl: buildPublicUrl("/api/reports/provider-webhook", request),
+        lastRun: lastAutomationRun,
       },
     });
   } catch (error: unknown) {
@@ -50,7 +56,6 @@ export async function PATCH(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
     const business = await getAdminBusiness(admin.id);
-
     if (!business) {
       return NextResponse.json({ error: "No business found" }, { status: 404 });
     }

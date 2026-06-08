@@ -21,17 +21,10 @@ export async function POST(request: NextRequest) {
     };
 
     if (!rawData || rawData.length < 50) {
-      return NextResponse.json(
-        { error: "Credit report data is too short or missing" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Credit report data is too short or missing" }, { status: 400 });
     }
-
     if (rawData.length > 50000) {
-      return NextResponse.json(
-        { error: "Credit report data exceeds maximum length of 50,000 characters" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Credit report data exceeds maximum length of 50,000 characters" }, { status: 400 });
     }
 
     const targetClientId = clientId || user.clientIds[0];
@@ -54,6 +47,8 @@ export async function POST(request: NextRequest) {
         rawData,
         bureau: bureau || "Combined",
         score: score ? Number.parseInt(String(score), 10) : undefined,
+        source: "MANUAL",
+        providerStatus: "UPLOADED",
       },
     });
 

@@ -76,41 +76,50 @@ model Client {
 }
 
 model CreditReport {
-  id          String    @id @default(cuid())
-  clientId    String
-  fileUrl     String?
-  rawData     String?
-  parsedData  String?
-  score       Int?
-  bureau      String?
-  analyzedAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  disputes    DisputeItem[]
-}
-
-model DisputeItem {
   id              String    @id @default(cuid())
-  reportId        String
   clientId        String
-  bureau          String
-  type            String
-  description     String
-  creditor        String?
-  accountNumber   String?
-  amount          String?
-  dateReported    DateTime?
-  confidenceScore Int?
-  status          String    @default("TO_DISPUTE")
-  notes           String?
+  fileUrl         String?
+  rawData         String?
+  parsedData      String?
+  score           Int?
+  bureau          String?
+  provider        String?
+  providerReportId String?  @unique
+  providerStatus  String    @default("UPLOADED")
+  source          String    @default("MANUAL")
+  pullRequestedAt DateTime?
+  pullCompletedAt DateTime?
+  pullError       String?
+  analyzedAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  report          CreditReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  letters         DisputeLetter[]
+  client          Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  disputes        DisputeItem[]
+}
+
+model DisputeItem {
+  id                    String    @id @default(cuid())
+  reportId              String
+  clientId              String
+  bureau                String
+  type                  String
+  description           String
+  creditor              String?
+  accountNumber         String?
+  amount                String?
+  dateReported          DateTime?
+  confidenceScore       Int?
+  status                String    @default("TO_DISPUTE")
+  notes                 String?
+  followUpAt            DateTime?
+  lastAutomatedActionAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  report                CreditReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  client                Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  letters               DisputeLetter[]
 }
 
 model DisputeLetter {
@@ -207,4 +216,14 @@ model StripeWebhookEvent {
   type        String
   summary     String?
   processedAt DateTime @default(now())
+}
+
+model AutomationRun {
+  id          String   @id @default(cuid())
+  type        String
+  status      String   @default("RUNNING")
+  summary     String?
+  details     String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
 }
