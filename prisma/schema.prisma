@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  role          String    @default("CLIENT")
+  businessId    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business      Business? @relation(fields: [businessId], references: [id])
+  ownedBusiness Business? @relation("BusinessOwner")
+  clients       Client[]
+  activities    ActivityLog[]
+}
+
+model Business {
+  id                String    @id @default(cuid())
+  name              String
+  address           String?
+  phone             String?
+  stripeCustomerId  String?
+  plan              String    @default("STARTER")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  owner             User?     @relation("BusinessOwner", fields: [ownerId], references: [id])
+  ownerId           String?   @unique
+  users             User[]
+  clients           Client[]
+  invoices          Invoice[]
+  subscriptions     Subscription[]
+}
+
+model Client {
+  id                String    @id @default(cuid())
+  businessId        String
+  userId            String?   @unique
+  name              String
+  email             String
+  phone             String?
+  address           String?
+  city              String?
+  state             String?
+  zip               String?
+  ssn               String?
+  dateOfBirth       DateTime?
+  creditScore       Int?
+  status            String    @default("active")
+  subscriptionStatus String   @default("pending")
+  stripeCustomerId   String?
+  stripeSubscriptionId String?
+  subscriptionPlan  String?
+  disputeCredits    Int       @default(0)
+  disputePackage    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  business          Business  @relation(fields: [businessId], references: [id])
+  user              User?     @relation(fields: [userId], references: [id])
+  creditReports     CreditReport[]
+  disputes          DisputeItem[]
+  contracts         ServiceContract[]
+  invoices          Invoice[]
+  activities        ActivityLog[]
+}
+
+model CreditReport {
+  id          String    @id @default(cuid())
+  clientId    String
+  fileUrl     String?
+  rawData     String?
+  parsedData  String?
+  score       Int?
+  bureau      String?
+  analyzedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  disputes    DisputeItem[]
+}
+
+model DisputeItem {
+  id              String    @id @default(cuid())
+  reportId        String
+  clientId        String
+  bureau          String
+  type            String
+  description     String
+  creditor        String?
+  accountNumber   String?
+  amount          String?
+  dateReported    DateTime?
+  confidenceScore Int?
+  status          String    @default("TO_DISPUTE")
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  report          CreditReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  client          Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  letters         DisputeLetter[]
+}
+
+model DisputeLetter {
+  id            String    @id @default(cuid())
+  disputeItemId String
+  templateType  String
+  content       String
+  generatedAt   DateTime  @default(now())
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  disputeItem   DisputeItem @relation(fields: [disputeItemId], references: [id], onDelete: Cascade)
+}
+
+model ServiceContract {
+  id            String    @id @default(cuid())
+  clientId      String
+  title         String
+  content       String
+  services      String
+  monthlyFee    Decimal
+  startDate     DateTime
+  endDate       DateTime?
+  signedAt      DateTime?
+  signatureData String?
+  status        String    @default("pending")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id              String    @id @default(cuid())
+  businessId      String
+  clientId        String?
+  amount          Decimal
+  status          String    @default("DRAFT")
+  stripeInvoiceId String?   @unique
+  description     String?
+  dueAt           DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  business        Business  @relation(fields: [businessId], references: [id])
+  client          Client?   @relation(fields: [clientId], references: [id])
+}
+
+model Subscription {
+  id                    String    @id @default(cuid())
+  businessId            String
+  plan                  String
+  status                String    @default("ACTIVE")
+  stripeSubscriptionId  String?
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  business              Business  @relation(fields: [businessId], references: [id])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  clientId  String?
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+  client    Client?  @relation(fields: [clientId], references: [id])
+}
