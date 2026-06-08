@@ -21,8 +21,8 @@ AI-assisted credit repair platform built with Next.js, Prisma, NextAuth, and Str
 - Dispute-credit accounting for packages, subscriptions, and admin adjustments
 - Stripe checkout, billing portal, and webhook handling
 - Service contracts, invoices, activity logs, and client management
-- Admin settings interface and automation status visibility
-- Configurable LLM backends: OpenAI, OpenRouter, or Mirrowel LLM-API-Key-Proxy
+- Admin settings interface, live LLM backend testing, and automation status visibility
+- Configurable LLM backends: local Mirrowel proxy, OpenRouter, or direct OpenAI
 
 ## Local Setup
 ```bash
@@ -43,30 +43,30 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESEND_API_KEY=re_...
 
-# Choose one LLM backend: openai, openrouter, or proxy
-LLM_BACKEND=openrouter
-LLM_MODEL=openai/gpt-4o-mini
-LLM_ANALYSIS_MODEL=openai/gpt-4o-mini
-LLM_LETTER_MODEL=openai/gpt-4o-mini
+# Default local proxy mode
+LLM_BACKEND=proxy
+LLM_PROXY_BASE_URL=http://127.0.0.1:8000/v1
+PROXY_API_KEY=replace-with-random-proxy-key
+LLM_PROXY_API_KEY=replace-with-random-proxy-key
+LLM_MODEL=openrouter/owl-alpha
+LLM_ANALYSIS_MODEL=openrouter/owl-alpha
+LLM_LETTER_MODEL=openrouter/owl-alpha
+LLM_PROXY_MODEL=openrouter/owl-alpha
 
-# Direct OpenAI backend
-OPENAI_API_KEY=sk-...
-# OPENAI_MODEL=gpt-4o-mini
-# OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Direct OpenRouter backend
+# OpenRouter provider credential used behind the proxy
 OPENROUTER_API_KEY=sk-or-...
-# OPENROUTER_MODEL=openai/gpt-4o-mini
+
+# Optional direct OpenRouter mode
+# LLM_BACKEND=openrouter
+# OPENROUTER_MODEL=openrouter/owl-alpha
 # OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 # OPENROUTER_APP_NAME=ClearCredit
 
-# Mirrowel LLM-API-Key-Proxy backend
-# LLM_BACKEND=proxy
-# LLM_PROXY_BASE_URL=http://127.0.0.1:8000/v1
-# LLM_PROXY_API_KEY=your_proxy_api_key
-# or reuse Mirrowel's native env name:
-# PROXY_API_KEY=your_proxy_api_key
-# LLM_PROXY_MODEL=openrouter/openai/gpt-4o-mini
+# Optional direct OpenAI mode
+# LLM_BACKEND=openai
+# OPENAI_API_KEY=sk-...
+# OPENAI_MODEL=gpt-4o-mini
+# OPENAI_BASE_URL=https://api.openai.com/v1
 
 REPORT_PULL_MODE=mock
 AUTO_ANALYZE_PULLED_REPORTS=true
@@ -79,24 +79,40 @@ AUTO_ANALYZE_PULLED_REPORTS=true
 # REPORT_PROVIDER_WEBHOOK_SECRET=shared_secret
 ```
 
+## Local Mirrowel Proxy Service
+ClearCredit now defaults to a local Mirrowel LLM-API-Key-Proxy instance talking to OpenRouter `openrouter/owl-alpha`.
+
+Install the service wrapper files:
+```bash
+./scripts/install-llm-proxy-service.sh
+```
+
+Run the proxy immediately in the foreground:
+```bash
+./scripts/start-local-llm-proxy.sh
+```
+
+If your environment supports a user systemd bus, enable the user service:
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now clearcredit-llm-proxy.service
+```
+
+The installed config file lives at:
+```text
+~/.config/clearcredit/llm-proxy.env
+```
+
 ## Mirrowel LLM-API-Key-Proxy Integration
 ClearCredit supports Mirrowel's proxy through the standard OpenAI-compatible `/v1/chat/completions` endpoint.
 
-1. Start the proxy from https://github.com/Mirrowel/LLM-API-Key-Proxy
-2. Configure provider keys inside the proxy (including OpenRouter if desired)
-3. Point ClearCredit at the proxy:
-
+Example proxy-side config:
 ```env
-LLM_BACKEND=proxy
-LLM_PROXY_BASE_URL=http://127.0.0.1:8000/v1
-PROXY_API_KEY=your_proxy_api_key
-LLM_PROXY_MODEL=openrouter/openai/gpt-4o-mini
+PROXY_API_KEY=replace-with-random-proxy-key
+OPENROUTER_API_KEY_1=sk-or-...
+SKIP_OAUTH_INIT_CHECK=true
+OPENROUTER_API_BASE=https://openrouter.ai/api/v1
 ```
-
-The proxy expects models in `provider/model_name` format, for example:
-- `openrouter/openai/gpt-4o-mini`
-- `openrouter/anthropic/claude-3.5-sonnet`
-- `openai/gpt-4o-mini`
 
 ## Useful Commands
 ```bash
@@ -105,6 +121,7 @@ npm test
 npx tsc --noEmit
 npm run build
 npm run seed:admin
+./scripts/start-local-llm-proxy.sh
 ```
 
 ## Stripe Webhook
@@ -124,7 +141,8 @@ Subscribe to:
 - Automatic report pulling is wired behind `/api/reports/pull`.
 - Provider callbacks are handled at `/api/reports/provider-webhook`.
 - Admins can trigger a full automation cycle from Settings or `POST /api/automation/run`.
-- LLM-backed analysis and letter generation now run through the shared backend adapter in `src/lib/llm.ts`.
+- Admins can run a live LLM health check from Settings via `POST /api/settings/llm-test`.
+- LLM-backed analysis and letter generation run through the shared backend adapter in `src/lib/llm.ts`.
 - For local/demo automation, set `REPORT_PULL_MODE=mock`.
 - For real provider mode, configure the generic provider environment values shown above.
 

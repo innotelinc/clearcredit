@@ -1,0 +1,14 @@
+[Unit]
+Description=ClearCredit local Mirrowel LLM proxy
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.cache/clearcredit/llm-api-key-proxy
+EnvironmentFile=%h/.config/clearcredit/llm-proxy.env
+ExecStart=%h/.cache/clearcredit/llm-api-key-proxy/.venv/bin/python %h/.cache/clearcredit/llm-api-key-proxy/src/proxy_app/main.py --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

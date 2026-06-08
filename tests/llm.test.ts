@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveLlmConfig } from "../src/lib/llm";
+import { getLlmStatus, resolveLlmConfig } from "../src/lib/llm";
 
 describe("resolveLlmConfig", () => {
   it("resolves direct OpenAI configuration", () => {
@@ -44,6 +44,17 @@ describe("resolveLlmConfig", () => {
 
     expect(config?.backend).toBe("proxy");
     expect(config?.baseURL).toBe("http://127.0.0.1:8000/v1");
-    expect(config?.model).toContain("/");
+    expect(config?.model).toBe("openrouter/owl-alpha");
+  });
+
+  it("prefers the local proxy when no backend is set but proxy credentials exist", () => {
+    const status = getLlmStatus({
+      PROXY_API_KEY: "proxy-key",
+      OPENROUTER_API_KEY: "router-key",
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(status.backend).toBe("proxy");
+    expect(status.usingLocalProxy).toBe(true);
+    expect(status.analysisModel).toBe("openrouter/owl-alpha");
   });
 });
