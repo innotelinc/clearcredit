@@ -32,7 +32,7 @@ AI-powered credit repair and dispute automation built with Next.js, Prisma, Stri
 
 - GitHub: <https://github.com/innotelinc/clearcredit>
 - Issues: <https://github.com/innotelinc/clearcredit/issues>
-- Releases: create a Git tag like `v0.2.0` to trigger the portable release workflow
+- Releases: create a Git tag like `v0.2.1` to trigger the portable release workflow
 
 ## Requirements
 
@@ -172,7 +172,7 @@ This project now uses package-based semantic versioning from `package.json`.
 
 Current version:
 
-- `0.2.0`
+- `0.2.1`
 
 Recommended release flow:
 
@@ -180,7 +180,7 @@ Recommended release flow:
 2. Update `CHANGELOG.md`
 3. Bump `package.json` version
 4. Commit
-5. Tag release: `git tag v0.2.0 && git push origin v0.2.0`
+5. Tag release: `git tag v0.2.1 && git push origin v0.2.1`
 6. GitHub Actions builds the portable archives and attaches them to the release
 
 ## GitHub workflows and community files

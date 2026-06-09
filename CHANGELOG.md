@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-06-09
+
+### Fixed
+- Committed a sanitized `.env.example` so portable release builds work in GitHub Actions and in clean checkouts
+- Published a canonical follow-up release tag from the latest `main` commit to align shipped assets with current source
+
 ## [0.2.0] - 2026-06-09
 
 ### Added
