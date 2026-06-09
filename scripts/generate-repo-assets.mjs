@@ -30,7 +30,7 @@ function makeBadge(label, value, { left = "#0f172a", right = "#2563eb", width = 
 }
 
 const badges = {
-  "release.svg": makeBadge("release", "v0.2.0", { right: "#1d4ed8" }),
+  "release.svg": makeBadge("release", "v0.2.1", { right: "#1d4ed8" }),
   "portable.svg": makeBadge("portable", "zip + tar.gz", { right: "#0f766e" }),
   "stack.svg": makeBadge("stack", "Next.js + Prisma + Stripe", { right: "#7c3aed", width: 470 }),
   "llm.svg": makeBadge("llm", "proxy / OpenRouter / OpenAI", { right: "#0369a1", width: 500 }),

@@ -28,4 +28,4 @@ Please include:
 
 ## Releases
 
-Portable release artifacts are produced from Git tags like `v0.2.0`.
+Portable release artifacts are produced from Git tags like `v0.2.1`.
