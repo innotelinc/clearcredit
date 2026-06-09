@@ -49,6 +49,29 @@ async function getProxyStatus() {
   }
 }
 
+function serializePricingPlans(plans: Awaited<ReturnType<typeof getPricingPlans>>) {
+  return {
+    monthlyPlans: plans.filter((plan) => plan.interval === "month").map((plan) => ({
+      key: plan.key,
+      name: plan.name,
+      interval: plan.interval,
+      amountCents: plan.amountCents,
+      displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
+      disputes: plan.disputes,
+      stripePriceId: plan.stripePriceId,
+    })),
+    yearlyPlans: plans.filter((plan) => plan.interval === "year").map((plan) => ({
+      key: plan.key,
+      name: plan.name,
+      interval: plan.interval,
+      amountCents: plan.amountCents,
+      displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
+      disputes: plan.disputes,
+      stripePriceId: plan.stripePriceId,
+    })),
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
@@ -80,22 +103,7 @@ export async function GET(request: NextRequest) {
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         reportProviderConfigured: isRealProviderConfigured(),
       },
-      pricing: {
-        monthlyPlans: pricingPlans.filter((plan) => plan.interval === "month").map((plan) => ({
-          key: plan.key,
-          name: plan.name,
-          amountCents: plan.amountCents,
-          displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
-          disputes: plan.disputes,
-        })),
-        yearlyPlans: pricingPlans.filter((plan) => plan.interval === "year").map((plan) => ({
-          key: plan.key,
-          name: plan.name,
-          amountCents: plan.amountCents,
-          displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
-          disputes: plan.disputes,
-        })),
-      },
+      pricing: serializePricingPlans(pricingPlans),
       automation: {
         reportPullMode: getReportProviderMode(),
         autoAnalyzePulledReports: process.env.AUTO_ANALYZE_PULLED_REPORTS === "true",
@@ -125,8 +133,12 @@ export async function PATCH(request: NextRequest) {
       address?: string | null;
       phone?: string | null;
       plan?: string;
-      pricing?: Array<{ key: string; amountCents: number }>;
+      pricing?: Array<{ key: string; name: string; amountCents: number; disputes: number; stripePriceId: string | null }>;
     };
+
+    if (body.pricing?.some((plan) => !plan.name?.trim() || !Number.isFinite(plan.amountCents) || plan.amountCents <= 0 || !Number.isFinite(plan.disputes) || plan.disputes <= 0)) {
+      return NextResponse.json({ error: "Each pricing plan must include a name, positive amount, and positive dispute count." }, { status: 400 });
+    }
 
     const [updatedBusiness, updatedPricingPlans] = await Promise.all([
       prisma.business.update({
@@ -143,22 +155,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       business: updatedBusiness,
-      pricing: {
-        monthlyPlans: updatedPricingPlans.filter((plan) => plan.interval === "month").map((plan) => ({
-          key: plan.key,
-          name: plan.name,
-          amountCents: plan.amountCents,
-          displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
-          disputes: plan.disputes,
-        })),
-        yearlyPlans: updatedPricingPlans.filter((plan) => plan.interval === "year").map((plan) => ({
-          key: plan.key,
-          name: plan.name,
-          amountCents: plan.amountCents,
-          displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
-          disputes: plan.disputes,
-        })),
-      },
+      pricing: serializePricingPlans(updatedPricingPlans),
     });
   } catch (error: unknown) {
     console.error("Update settings error:", error);

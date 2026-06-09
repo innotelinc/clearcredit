@@ -19,6 +19,14 @@ export interface PricingPlanRecord {
   active: boolean;
 }
 
+export interface PricingPlanUpdateInput {
+  key: string;
+  name: string;
+  amountCents: number;
+  disputes: number;
+  stripePriceId: string | null;
+}
+
 const DEFAULT_PRICING_PLANS: PricingPlanRecord[] = [
   { key: "basic_monthly", name: "Basic Monthly", interval: "month", amountCents: 4900, disputes: 3, stripePriceId: process.env.STRIPE_BASIC_SUB_PRICE_ID || null, active: true },
   { key: "standard_monthly", name: "Standard Monthly", interval: "month", amountCents: 9900, disputes: 7, stripePriceId: process.env.STRIPE_STANDARD_SUB_PRICE_ID || null, active: true },
@@ -58,11 +66,11 @@ export async function ensureDefaultPricingPlans() {
       prisma.pricingPlan.upsert({
         where: { key: plan.key },
         update: {
-          name: plan.name,
           interval: plan.interval,
+          active: plan.active,
+          name: plan.name,
           disputes: plan.disputes,
           stripePriceId: plan.stripePriceId,
-          active: plan.active,
         },
         create: plan,
       }),
@@ -92,13 +100,18 @@ export async function findSubscriptionPlanByPriceId(priceId?: string | null) {
   return plans.find((plan) => plan.stripePriceId === priceId) || null;
 }
 
-export async function updatePricingPlans(input: Array<{ key: string; amountCents: number }>) {
+export async function updatePricingPlans(input: PricingPlanUpdateInput[]) {
   await ensureDefaultPricingPlans();
   await prisma.$transaction(
     input.map((plan) =>
       prisma.pricingPlan.update({
         where: { key: plan.key },
-        data: { amountCents: plan.amountCents },
+        data: {
+          name: plan.name.trim(),
+          amountCents: plan.amountCents,
+          disputes: plan.disputes,
+          stripePriceId: plan.stripePriceId?.trim() || null,
+        },
       }),
     ),
   );

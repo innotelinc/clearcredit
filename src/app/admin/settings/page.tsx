@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Bot, Building2, CheckCircle2, CreditCard, DollarSign, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
+import { Activity, Bot, Building2, CheckCircle2, CreditCard, DollarSign, Hash, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +12,11 @@ import { Badge } from "@/components/ui/badge";
 interface PricingPlanView {
   key: string;
   name: string;
+  interval: "month" | "year";
   amountCents: number;
   displayPrice: string;
   disputes: number;
+  stripePriceId: string | null;
 }
 
 interface SettingsResponse {
@@ -72,6 +74,13 @@ interface LlmTestResult {
   };
 }
 
+interface PricingFormEntry {
+  name: string;
+  amount: string;
+  disputes: string;
+  stripePriceId: string;
+}
+
 export default function AdminSettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,7 +92,7 @@ export default function AdminSettingsPage() {
   const [pricingMessage, setPricingMessage] = useState("");
   const [llmTestMessage, setLlmTestMessage] = useState("");
   const [form, setForm] = useState({ name: "", address: "", phone: "", plan: "STARTER" });
-  const [pricingForm, setPricingForm] = useState<Record<string, string>>({});
+  const [pricingForm, setPricingForm] = useState<Record<string, PricingFormEntry>>({});
 
   function syncForms(payload: SettingsResponse) {
     setForm({
@@ -92,9 +101,14 @@ export default function AdminSettingsPage() {
       phone: payload.business.phone || "",
       plan: payload.business.plan || "STARTER",
     });
-    const nextPricing: Record<string, string> = {};
+    const nextPricing: Record<string, PricingFormEntry> = {};
     for (const plan of [...payload.pricing.monthlyPlans, ...payload.pricing.yearlyPlans]) {
-      nextPricing[plan.key] = (plan.amountCents / 100).toString();
+      nextPricing[plan.key] = {
+        name: plan.name,
+        amount: (plan.amountCents / 100).toString(),
+        disputes: String(plan.disputes),
+        stripePriceId: plan.stripePriceId || "",
+      };
     }
     setPricingForm(nextPricing);
   }
@@ -165,10 +179,13 @@ export default function AdminSettingsPage() {
     try {
       const pricingPayload = Object.entries(pricingForm).map(([key, value]) => ({
         key,
-        amountCents: Math.round(Number.parseFloat(value || "0") * 100),
+        name: value.name.trim(),
+        amountCents: Math.round(Number.parseFloat(value.amount || "0") * 100),
+        disputes: Number.parseInt(value.disputes || "0", 10),
+        stripePriceId: value.stripePriceId.trim() || null,
       }));
-      if (pricingPayload.some((plan) => !Number.isFinite(plan.amountCents) || plan.amountCents <= 0)) {
-        throw new Error("All monthly and yearly plan prices must be valid positive amounts.");
+      if (pricingPayload.some((plan) => !plan.name || !Number.isFinite(plan.amountCents) || plan.amountCents <= 0 || !Number.isFinite(plan.disputes) || plan.disputes <= 0)) {
+        throw new Error("Each monthly and yearly plan needs a name, positive price, and positive dispute count.");
       }
       const res = await fetch("/api/settings", {
         method: "PATCH",
@@ -178,7 +195,10 @@ export default function AdminSettingsPage() {
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "Failed to save pricing");
       setData((current) => (current ? { ...current, pricing: payload.pricing } : current));
-      setPricingMessage("Pricing updated. Signup, billing, and checkout now use the new monthly/yearly amounts.");
+      if (payload.pricing) {
+        syncForms({ ...(data as SettingsResponse), pricing: payload.pricing });
+      }
+      setPricingMessage("Pricing updated. Homepage, signup, billing, and Stripe checkout now use the edited names, disputes, prices, and Stripe price IDs.");
     } catch (error) {
       setPricingMessage(error instanceof Error ? error.message : "Failed to save pricing");
     } finally {
@@ -235,23 +255,57 @@ export default function AdminSettingsPage() {
         <h3 className="mb-4 text-base font-semibold">{title}</h3>
         <div className="grid gap-4 md:grid-cols-3">
           {plans.map((plan) => (
-            <div key={plan.key} className="rounded-lg border p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
+            <div key={plan.key} className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-medium">{plan.name}</p>
-                  <p className="text-xs text-muted-foreground">{plan.disputes} disputes per {suffix === "/yr" ? "year" : "month"}</p>
+                  <p className="text-xs text-muted-foreground">Key: {plan.key}</p>
                 </div>
                 <Badge variant="outline">{plan.displayPrice}</Badge>
               </div>
-              <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Price ({suffix})</label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Plan name</label>
                 <Input
-                  value={pricingForm[plan.key] ?? (plan.amountCents / 100).toString()}
-                  onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: e.target.value }))}
-                  inputMode="decimal"
-                  className="pl-9"
+                  value={pricingForm[plan.key]?.name ?? plan.name}
+                  onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: { ...(current[plan.key] || { name: plan.name, amount: String(plan.amountCents / 100), disputes: String(plan.disputes), stripePriceId: plan.stripePriceId || "" }), name: e.target.value } }))}
                 />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Price ({suffix})</label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={pricingForm[plan.key]?.amount ?? (plan.amountCents / 100).toString()}
+                    onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: { ...(current[plan.key] || { name: plan.name, amount: String(plan.amountCents / 100), disputes: String(plan.disputes), stripePriceId: plan.stripePriceId || "" }), amount: e.target.value } }))}
+                    inputMode="decimal"
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Dispute credits</label>
+                <div className="relative">
+                  <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={pricingForm[plan.key]?.disputes ?? String(plan.disputes)}
+                    onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: { ...(current[plan.key] || { name: plan.name, amount: String(plan.amountCents / 100), disputes: String(plan.disputes), stripePriceId: plan.stripePriceId || "" }), disputes: e.target.value } }))}
+                    inputMode="numeric"
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Stripe price ID</label>
+                <Input
+                  placeholder="price_... or leave blank for dynamic price_data"
+                  value={pricingForm[plan.key]?.stripePriceId ?? (plan.stripePriceId || "")}
+                  onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: { ...(current[plan.key] || { name: plan.name, amount: String(plan.amountCents / 100), disputes: String(plan.disputes), stripePriceId: plan.stripePriceId || "" }), stripePriceId: e.target.value } }))}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">If blank, checkout falls back to dynamic Stripe price_data for this plan.</p>
               </div>
             </div>
           ))}
@@ -293,7 +347,7 @@ export default function AdminSettingsPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Subscription Pricing</CardTitle>
-                    <CardDescription>Edit the live monthly and yearly plan pricing used by signup, billing, and Stripe checkout.</CardDescription>
+                    <CardDescription>Edit monthly and yearly plan names, prices, disputes, and Stripe price IDs used by homepage, signup, billing, and checkout.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {renderPricingGrid("Monthly plans", data.pricing.monthlyPlans, "/mo")}
