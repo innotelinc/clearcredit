@@ -71,12 +71,8 @@ type PublicPlan = {
   priceSuffix: string;
   amountCents: number;
   disputes: number;
-};
-
-const packagePrices: Record<string, number> = {
-  basic: 149,
-  standard: 299,
-  premium: 499,
+  active?: boolean;
+  sortOrder?: number;
 };
 
 export default function SignupPage() {
@@ -85,6 +81,7 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [monthlyPlans, setMonthlyPlans] = useState<PublicPlan[]>([]);
   const [yearlyPlans, setYearlyPlans] = useState<PublicPlan[]>([]);
+  const [packages, setPackages] = useState<PublicPlan[]>([]);
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
 
   const [formData, setFormData] = useState({
@@ -115,8 +112,10 @@ export default function SignupPage() {
     fetch("/api/pricing")
       .then((response) => response.json())
       .then((payload) => {
+        const nextPackages = (payload.packages || []) as PublicPlan[];
         const nextMonthly = (payload.monthlyPlans || []) as PublicPlan[];
         const nextYearly = (payload.yearlyPlans || []) as PublicPlan[];
+        setPackages(nextPackages);
         setMonthlyPlans(nextMonthly);
         setYearlyPlans(nextYearly);
       })
@@ -124,6 +123,7 @@ export default function SignupPage() {
   }, []);
 
   const activeSubscriptionPlans = billingInterval === "year" ? yearlyPlans : monthlyPlans;
+  const selectedPackage = packages.find((pkg) => pkg.key === formData.package) || null;
   const selectedSubscriptionPlan = activeSubscriptionPlans.find((plan) => plan.key === formData.plan)
     || monthlyPlans.find((plan) => plan.key === formData.plan)
     || yearlyPlans.find((plan) => plan.key === formData.plan)
@@ -201,7 +201,9 @@ export default function SignupPage() {
                     : formData.plan === "premium_monthly"
                       ? 149
                       : 99
-              : packagePrices[formData.package] || 299,
+              : selectedPackage
+                ? selectedPackage.amountCents / 100
+                : 299,
           signedAt: new Date().toISOString(),
           signatureData: formData.signature,
           contractStatus: "signed",
@@ -492,15 +494,15 @@ export default function SignupPage() {
 
             {formData.billingType === "package" ? (
               <div className="grid gap-4">
-                {[
-                  { id: "basic", name: "Basic", price: "$149", disputes: "3 disputes", features: ["3 AI-generated dispute letters", "FCRA-compliant formatting", "Email support"] },
-                  { id: "standard", name: "Standard", price: "$299", disputes: "7 disputes", features: ["7 AI-generated dispute letters", "FCRA-compliant formatting", "Priority support", "Progress tracking"] },
-                  { id: "premium", name: "Premium", price: "$499", disputes: "15 disputes", features: ["15 AI-generated dispute letters", "FCRA-compliant formatting", "Priority support", "Progress tracking", "Dedicated specialist"] },
-                ].map((pkg) => (
+                {(packages.length > 0 ? packages : [
+                  { key: "basic", name: "Basic", price: "$149", priceSuffix: "", amountCents: 14900, disputes: 3 },
+                  { key: "standard", name: "Standard", price: "$299", priceSuffix: "", amountCents: 29900, disputes: 7 },
+                  { key: "premium", name: "Premium", price: "$499", priceSuffix: "", amountCents: 49900, disputes: 15 },
+                ]).map((pkg) => (
                   <label
-                    key={pkg.id}
+                    key={pkg.key}
                     className={`flex items-start gap-4 rounded-xl border p-4 cursor-pointer transition-all ${
-                      formData.package === pkg.id
+                      formData.package === pkg.key
                         ? "border-primary bg-primary/5 ring-1 ring-primary"
                         : "border-border hover:bg-muted/50"
                     }`}
@@ -508,9 +510,9 @@ export default function SignupPage() {
                     <input
                       type="radio"
                       name="package"
-                      value={pkg.id}
-                      checked={formData.package === pkg.id}
-                      onChange={() => updateField("package", pkg.id)}
+                      value={pkg.key}
+                      checked={formData.package === pkg.key}
+                      onChange={() => updateField("package", pkg.key)}
                       className="mt-1 h-4 w-4 text-primary"
                     />
                     <div className="flex-1">
@@ -518,9 +520,15 @@ export default function SignupPage() {
                         <h4 className="font-semibold">{pkg.name}</h4>
                         <span className="text-lg font-bold text-primary">{pkg.price}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{pkg.disputes} — one-time purchase</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{pkg.disputes} disputes — one-time purchase</p>
                       <ul className="mt-2 space-y-1">
-                        {pkg.features.map((f) => (
+                        {[
+                          `${pkg.disputes} AI-generated dispute letters`,
+                          "FCRA-compliant formatting",
+                          pkg.disputes >= 7 ? "Priority support" : "Email support",
+                          pkg.disputes >= 7 ? "Progress tracking" : "Guided onboarding",
+                          pkg.disputes >= 15 ? "Dedicated specialist" : null,
+                        ].filter(Boolean).map((f) => (
                           <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
                             <CheckCircle2 className="h-3 w-3 text-success" />
                             {f}

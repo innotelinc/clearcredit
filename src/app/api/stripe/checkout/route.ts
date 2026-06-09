@@ -53,13 +53,10 @@ export async function POST(request: NextRequest) {
         metadata: { clientId: client.id, businessId: client.businessId },
       });
       stripeCustomerId = customer.id;
-      await prisma.client.update({
-        where: { id: client.id },
-        data: { stripeCustomerId },
-      });
+      await prisma.client.update({ where: { id: client.id }, data: { stripeCustomerId } });
     }
 
-    const pkg = body.package ? getDisputePackage(body.package) : null;
+    const pkg = body.package ? await getDisputePackage(body.package) : null;
     const plan = body.plan ? await getSubscriptionPlan(body.plan) : null;
 
     if (!pkg && !plan) {
@@ -87,12 +84,12 @@ export async function POST(request: NextRequest) {
             },
             quantity: 1,
           }
-      : pkg && isConfiguredStripePriceId(pkg.priceId)
-        ? { price: pkg.priceId, quantity: 1 }
+      : pkg && pkg.stripePriceId && isConfiguredStripePriceId(pkg.stripePriceId)
+        ? { price: pkg.stripePriceId, quantity: 1 }
         : {
             price_data: {
               currency: "usd",
-              unit_amount: pkg?.amount || 0,
+              unit_amount: pkg?.amountCents || 0,
               product_data: {
                 name: pkg?.name || "Dispute package",
                 description: `${pkg?.disputes || 0} dispute credits`,

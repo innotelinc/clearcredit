@@ -1,11 +1,35 @@
 {
-  "name": "creditclear",
-  "version": "0.1.0",
-  "private": true,
+  "name": "clearcredit",
+  "version": "0.2.0",
+  "description": "AI-powered credit repair and dispute automation platform with admin-managed pricing and portable standalone packaging.",
+  "private": false,
+  "license": "MIT",
+  "homepage": "https://github.com/innotelinc/clearcredit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/innotelinc/clearcredit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/innotelinc/clearcredit/issues"
+  },
+  "keywords": [
+    "credit-repair",
+    "nextjs",
+    "stripe",
+    "prisma",
+    "ai",
+    "portable"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:portable": "next build",
     "start": "next start",
+    "start:portable": "node .next/standalone/server.js",
+    "package:portable": "bash scripts/package-portable.sh",
     "lint": "eslint",
     "test": "vitest run",
     "seed:admin": "node prisma/seed.js"

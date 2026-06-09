@@ -20,12 +20,7 @@ async function getAdminBusiness(userId: string) {
 async function getProxyStatus() {
   const llmStatus = getLlmStatus();
   if (!llmStatus.usingLocalProxy || !llmStatus.baseURL) {
-    return {
-      enabled: false,
-      reachable: false,
-      statusText: "Local proxy mode is not active",
-      healthUrl: null as string | null,
-    };
+    return { enabled: false, reachable: false, statusText: "Local proxy mode is not active", healthUrl: null as string | null };
   }
 
   const healthUrl = llmStatus.baseURL.replace(/\/v1\/?$/, "") + "/";
@@ -50,25 +45,24 @@ async function getProxyStatus() {
 }
 
 function serializePricingPlans(plans: Awaited<ReturnType<typeof getPricingPlans>>) {
+  const serialize = (plan: Awaited<ReturnType<typeof getPricingPlans>>[number]) => ({
+    key: plan.key,
+    kind: plan.kind,
+    name: plan.name,
+    interval: plan.interval,
+    amountCents: plan.amountCents,
+    displayPrice: `${formatUsdFromCents(plan.amountCents)}${plan.interval === "month" ? "/mo" : plan.interval === "year" ? "/yr" : ""}`,
+    disputes: plan.disputes,
+    stripePriceId: plan.stripePriceId,
+    sortOrder: plan.sortOrder,
+    active: plan.active,
+  });
+
   return {
-    monthlyPlans: plans.filter((plan) => plan.interval === "month").map((plan) => ({
-      key: plan.key,
-      name: plan.name,
-      interval: plan.interval,
-      amountCents: plan.amountCents,
-      displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
-      disputes: plan.disputes,
-      stripePriceId: plan.stripePriceId,
-    })),
-    yearlyPlans: plans.filter((plan) => plan.interval === "year").map((plan) => ({
-      key: plan.key,
-      name: plan.name,
-      interval: plan.interval,
-      amountCents: plan.amountCents,
-      displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
-      disputes: plan.disputes,
-      stripePriceId: plan.stripePriceId,
-    })),
+    plans: plans.map(serialize),
+    packages: plans.filter((plan) => plan.kind === "package").map(serialize),
+    monthlyPlans: plans.filter((plan) => plan.kind === "subscription" && plan.interval === "month").map(serialize),
+    yearlyPlans: plans.filter((plan) => plan.kind === "subscription" && plan.interval === "year").map(serialize),
   };
 }
 
@@ -76,9 +70,7 @@ export async function GET(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
     const business = await getAdminBusiness(admin.id);
-    if (!business) {
-      return NextResponse.json({ error: "No business found" }, { status: 404 });
-    }
+    if (!business) return NextResponse.json({ error: "No business found" }, { status: 404 });
 
     const llmStatus = getLlmStatus();
     const [lastAutomationRun, proxyStatus, pricingPlans] = await Promise.all([
@@ -124,20 +116,18 @@ export async function PATCH(request: NextRequest) {
   try {
     const admin = await requireAdminUser(request);
     const business = await getAdminBusiness(admin.id);
-    if (!business) {
-      return NextResponse.json({ error: "No business found" }, { status: 404 });
-    }
+    if (!business) return NextResponse.json({ error: "No business found" }, { status: 404 });
 
     const body = (await request.json()) as {
       name?: string;
       address?: string | null;
       phone?: string | null;
       plan?: string;
-      pricing?: Array<{ key: string; name: string; amountCents: number; disputes: number; stripePriceId: string | null }>;
+      pricing?: Array<{ key: string; name: string; amountCents: number; disputes: number; stripePriceId: string | null; sortOrder: number; active: boolean }>;
     };
 
-    if (body.pricing?.some((plan) => !plan.name?.trim() || !Number.isFinite(plan.amountCents) || plan.amountCents <= 0 || !Number.isFinite(plan.disputes) || plan.disputes <= 0)) {
-      return NextResponse.json({ error: "Each pricing plan must include a name, positive amount, and positive dispute count." }, { status: 400 });
+    if (body.pricing?.some((plan) => !plan.name?.trim() || !Number.isFinite(plan.amountCents) || plan.amountCents <= 0 || !Number.isFinite(plan.disputes) || plan.disputes <= 0 || !Number.isFinite(plan.sortOrder))) {
+      return NextResponse.json({ error: "Each pricing plan must include a name, positive amount, positive dispute count, and numeric sort order." }, { status: 400 });
     }
 
     const [updatedBusiness, updatedPricingPlans] = await Promise.all([
@@ -153,10 +143,7 @@ export async function PATCH(request: NextRequest) {
       body.pricing?.length ? updatePricingPlans(body.pricing) : getPricingPlans(),
     ]);
 
-    return NextResponse.json({
-      business: updatedBusiness,
-      pricing: serializePricingPlans(updatedPricingPlans),
-    });
+    return NextResponse.json({ business: updatedBusiness, pricing: serializePricingPlans(updatedPricingPlans) });
   } catch (error: unknown) {
     console.error("Update settings error:", error);
     const message = getErrorMessage(error, "Failed to update settings");

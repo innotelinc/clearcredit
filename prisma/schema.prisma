@@ -229,14 +229,16 @@ model AutomationRun {
 }
 
 model PricingPlan {
-  id           String   @id @default(cuid())
-  key          String   @unique
-  name         String
-  interval     String
-  amountCents  Int
-  disputes     Int
+  id            String   @id @default(cuid())
+  key           String   @unique
+  kind          String   @default("subscription")
+  name          String
+  interval      String?
+  amountCents   Int
+  disputes      Int
   stripePriceId String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  sortOrder     Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
