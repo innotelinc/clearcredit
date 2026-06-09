@@ -27,7 +27,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:portable": "next build",
-    "start": "next start",
+    "start": "node .next/standalone/server.js",
     "start:portable": "node .next/standalone/server.js",
     "package:portable": "bash scripts/package-portable.sh",
     "assets:repo": "node scripts/generate-repo-assets.mjs",
