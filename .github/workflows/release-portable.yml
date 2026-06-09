@@ -1,12 +1,13 @@
-name: CI
+name: Release Portable Bundle
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
-  validate:
+  release:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: file:./dev.db
@@ -15,6 +16,8 @@ jobs:
       PUBLIC_APP_URL: http://localhost:3000
       STRIPE_SECRET_KEY: sk_test_dummy
       STRIPE_WEBHOOK_SECRET: whsec_dummy
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,14 +36,21 @@ jobs:
           npx prisma generate
           npx prisma db push
 
-      - name: Lint
-        run: npm run lint
+      - name: Validate
+        run: |
+          npm run lint
+          npm test
+          npx tsc --noEmit
+          npm run build
 
-      - name: Test
-        run: npm test
+      - name: Build portable artifacts
+        run: npm run package:portable
 
-      - name: Typecheck
-        run: npx tsc --noEmit
-
-      - name: Build
-        run: npm run build
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*SHA256SUMS.txt
+          generate_release_notes: true

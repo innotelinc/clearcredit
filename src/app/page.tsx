@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-import { formatUsdFromCents, getSubscriptionPlansByInterval } from "@/lib/pricing";
+import { formatUsdFromCents, getPackagePlans, getSubscriptionPlansByInterval } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
 async function fetchStats() {
@@ -74,48 +74,6 @@ const features = [
   },
 ];
 
-const packages = [
-  {
-    name: "Basic",
-    price: "$149",
-    description: "Great for getting started with a few disputes.",
-    billingLabel: "one-time",
-    features: ["3 AI-generated dispute letters", "FCRA-compliant formatting", "Email support", "Progress tracking"],
-    cta: "Get Started",
-    highlighted: false,
-  },
-  {
-    name: "Standard",
-    price: "$299",
-    description: "Our most popular package for comprehensive credit repair.",
-    billingLabel: "one-time",
-    features: [
-      "7 AI-generated dispute letters",
-      "FCRA-compliant formatting",
-      "Priority support",
-      "Progress tracking",
-      "Credit report analysis",
-    ],
-    cta: "Start Free Trial",
-    highlighted: true,
-  },
-  {
-    name: "Premium",
-    price: "$499",
-    description: "Maximum coverage for clients with extensive repair needs.",
-    billingLabel: "one-time",
-    features: [
-      "15 AI-generated dispute letters",
-      "FCRA-compliant formatting",
-      "Priority support",
-      "Progress tracking",
-      "Dedicated specialist",
-    ],
-    cta: "Contact Sales",
-    highlighted: false,
-  },
-];
-
 const buildSubscriptionFeatures = (disputes: number, interval: "month" | "year") => [
   `${disputes} disputes per ${interval === "year" ? "year" : "month"}`,
   `${disputes} AI-generated dispute letters / ${interval === "year" ? "year" : "month"}`,
@@ -126,8 +84,9 @@ const buildSubscriptionFeatures = (disputes: number, interval: "month" | "year")
 ];
 
 export default async function HomePage() {
-  const [stats, monthlyPlans, yearlyPlans] = await Promise.all([
+  const [stats, packagePlans, monthlyPlans, yearlyPlans] = await Promise.all([
     fetchStats(),
+    getPackagePlans(true),
     getSubscriptionPlansByInterval("month"),
     getSubscriptionPlansByInterval("year"),
   ]);
@@ -377,29 +336,35 @@ export default async function HomePage() {
                 <p className="mt-2 text-sm text-muted-foreground">Pay once for a fixed number of dispute credits.</p>
               </div>
               <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
-                {packages.map((pkg) => (
+                {packagePlans.map((pkg, index) => (
                   <Card
-                    key={pkg.name}
+                    key={pkg.key}
                     className={`relative flex flex-col ${
-                      pkg.highlighted
+                      index === 1
                         ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
                         : "border-border/60"
                     }`}
                   >
-                    {pkg.highlighted && (
+                    {index === 1 && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
                         Most Popular
                       </div>
                     )}
                     <CardContent className="flex flex-1 flex-col p-6">
                       <h3 className="text-lg font-semibold">{pkg.name}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{pkg.description}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Pay once for {pkg.disputes} dispute credits with no recurring charge.</p>
                       <div className="mt-4 flex items-baseline">
-                        <span className="text-4xl font-bold">{pkg.price}</span>
-                        <span className="ml-1 text-sm text-muted-foreground">{pkg.billingLabel}</span>
+                        <span className="text-4xl font-bold">{formatUsdFromCents(pkg.amountCents)}</span>
+                        <span className="ml-1 text-sm text-muted-foreground">one-time</span>
                       </div>
                       <ul className="mt-6 space-y-3 flex-1">
-                        {pkg.features.map((f) => (
+                        {[
+                          `${pkg.disputes} AI-generated dispute letters`,
+                          "FCRA-compliant formatting",
+                          pkg.disputes >= 7 ? "Priority support" : "Email support",
+                          pkg.disputes >= 7 ? "Progress tracking" : "Guided onboarding",
+                          pkg.disputes >= 15 ? "Dedicated specialist" : null,
+                        ].filter(Boolean).map((f) => (
                           <li key={f} className="flex items-start gap-2 text-sm">
                             <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
                             {f}
@@ -407,8 +372,8 @@ export default async function HomePage() {
                         ))}
                       </ul>
                       <Link href="/signup" className="mt-6">
-                        <Button variant={pkg.highlighted ? "primary" : "outline"} className="w-full">
-                          {pkg.cta}
+                        <Button variant={index === 1 ? "primary" : "outline"} className="w-full">
+                          {index === 1 ? "Choose Package" : "Get Started"}
                         </Button>
                       </Link>
                     </CardContent>
