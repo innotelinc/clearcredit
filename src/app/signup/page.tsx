@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import {
@@ -64,10 +64,28 @@ The Company does not guarantee specific results. The Client acknowledges that cr
 
 By signing below, the Client acknowledges they have read, understood, and agree to the terms of this Agreement.`;
 
+type PublicPlan = {
+  key: string;
+  name: string;
+  price: string;
+  priceSuffix: string;
+  amountCents: number;
+  disputes: number;
+};
+
+const packagePrices: Record<string, number> = {
+  basic: 149,
+  standard: 299,
+  premium: 499,
+};
+
 export default function SignupPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [monthlyPlans, setMonthlyPlans] = useState<PublicPlan[]>([]);
+  const [yearlyPlans, setYearlyPlans] = useState<PublicPlan[]>([]);
+  const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -91,6 +109,32 @@ export default function SignupPage() {
 
   function updateField<K extends keyof typeof formData>(field: K, value: (typeof formData)[K]) {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  useEffect(() => {
+    fetch("/api/pricing")
+      .then((response) => response.json())
+      .then((payload) => {
+        const nextMonthly = (payload.monthlyPlans || []) as PublicPlan[];
+        const nextYearly = (payload.yearlyPlans || []) as PublicPlan[];
+        setMonthlyPlans(nextMonthly);
+        setYearlyPlans(nextYearly);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const activeSubscriptionPlans = billingInterval === "year" ? yearlyPlans : monthlyPlans;
+  const selectedSubscriptionPlan = activeSubscriptionPlans.find((plan) => plan.key === formData.plan)
+    || monthlyPlans.find((plan) => plan.key === formData.plan)
+    || yearlyPlans.find((plan) => plan.key === formData.plan)
+    || null;
+
+  function switchBillingInterval(interval: "month" | "year") {
+    setBillingInterval(interval);
+    const plans = interval === "year" ? yearlyPlans : monthlyPlans;
+    if (plans.length > 0 && !plans.some((plan) => plan.key === formData.plan)) {
+      updateField("plan", plans[0].key);
+    }
   }
 
   function validateStep(step: number): string | null {
@@ -144,16 +188,20 @@ export default function SignupPage() {
           contractServices: "Full credit repair services including dispute letters, progress tracking, and consultation",
           monthlyFee:
             formData.billingType === "subscription"
-              ? formData.plan === "basic_monthly"
-                ? 49
-                : formData.plan === "premium_monthly"
-                  ? 149
-                  : 99
-              : formData.package === "basic"
-                ? 149
-                : formData.package === "premium"
-                  ? 499
-                  : 299,
+              ? selectedSubscriptionPlan
+                ? selectedSubscriptionPlan.amountCents / 100
+                : billingInterval === "year"
+                  ? formData.plan === "basic_yearly"
+                    ? 490
+                    : formData.plan === "premium_yearly"
+                      ? 1490
+                      : 990
+                  : formData.plan === "basic_monthly"
+                    ? 49
+                    : formData.plan === "premium_monthly"
+                      ? 149
+                      : 99
+              : packagePrices[formData.package] || 299,
           signedAt: new Date().toISOString(),
           signatureData: formData.signature,
           contractStatus: "signed",
@@ -438,7 +486,7 @@ export default function SignupPage() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Monthly Subscription
+                Subscription Plans
               </button>
             </div>
 
@@ -485,15 +533,39 @@ export default function SignupPage() {
               </div>
             ) : (
               <div className="grid gap-4">
-                {[
-                  { id: "basic_monthly", name: "Basic Monthly", price: "$49/mo", disputes: "3 disputes/mo", features: ["3 AI-generated dispute letters / month", "FCRA-compliant formatting", "Email support", "Auto-renewing credits"] },
-                  { id: "standard_monthly", name: "Standard Monthly", price: "$99/mo", disputes: "7 disputes/mo", features: ["7 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Progress tracking", "Auto-renewing credits"] },
-                  { id: "premium_monthly", name: "Premium Monthly", price: "$149/mo", disputes: "15 disputes/mo", features: ["15 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Progress tracking", "Dedicated specialist", "Auto-renewing credits"] },
-                ].map((pl) => (
+                <div className="flex rounded-lg border border-border bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    onClick={() => switchBillingInterval("month")}
+                    className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                      billingInterval === "month"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchBillingInterval("year")}
+                    className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                      billingInterval === "year"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Yearly
+                  </button>
+                </div>
+                {(activeSubscriptionPlans.length > 0 ? activeSubscriptionPlans : [
+                  { key: "basic_monthly", name: "Basic Monthly", price: "$49", priceSuffix: "/mo", amountCents: 4900, disputes: 3 },
+                  { key: "standard_monthly", name: "Standard Monthly", price: "$99", priceSuffix: "/mo", amountCents: 9900, disputes: 7 },
+                  { key: "premium_monthly", name: "Premium Monthly", price: "$149", priceSuffix: "/mo", amountCents: 14900, disputes: 15 },
+                ]).map((pl) => (
                   <label
-                    key={pl.id}
+                    key={pl.key}
                     className={`flex items-start gap-4 rounded-xl border p-4 cursor-pointer transition-all ${
-                      formData.plan === pl.id
+                      formData.plan === pl.key
                         ? "border-primary bg-primary/5 ring-1 ring-primary"
                         : "border-border hover:bg-muted/50"
                     }`}
@@ -501,19 +573,26 @@ export default function SignupPage() {
                     <input
                       type="radio"
                       name="plan"
-                      value={pl.id}
-                      checked={formData.plan === pl.id}
-                      onChange={() => updateField("plan", pl.id)}
+                      value={pl.key}
+                      checked={formData.plan === pl.key}
+                      onChange={() => updateField("plan", pl.key)}
                       className="mt-1 h-4 w-4 text-primary"
                     />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
                         <h4 className="font-semibold">{pl.name}</h4>
-                        <span className="text-lg font-bold text-primary">{pl.price}</span>
+                        <span className="text-lg font-bold text-primary">{pl.price}{pl.priceSuffix}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{pl.disputes} — billed monthly</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{pl.disputes} disputes/{billingInterval === "year" ? "yr" : "mo"} — billed {billingInterval === "year" ? "yearly" : "monthly"}</p>
                       <ul className="mt-2 space-y-1">
-                        {pl.features.map((f) => (
+                        {[
+                          `${pl.disputes} AI-generated dispute letters / ${billingInterval === "year" ? "year" : "month"}`,
+                          "FCRA-compliant formatting",
+                          billingInterval === "year" ? "Annual billing" : "Auto-renewing credits",
+                          pl.disputes >= 7 ? "Priority support" : "Email support",
+                          pl.disputes >= 7 ? "Progress tracking" : "Guided onboarding",
+                          pl.disputes >= 15 ? "Dedicated specialist" : null,
+                        ].filter(Boolean).map((f) => (
                           <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
                             <CheckCircle2 className="h-3 w-3 text-success" />
                             {f}

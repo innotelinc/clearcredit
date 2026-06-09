@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { findSubscriptionPlanByPriceId as findConfiguredSubscriptionPlanByPriceId, getSubscriptionPlan as getConfiguredSubscriptionPlan } from "@/lib/pricing";
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY is not set in environment variables");
@@ -29,37 +30,17 @@ export const DISPUTE_PACKAGES: Record<string, { priceId: string; amount: number;
   },
 };
 
-export const SUBSCRIPTION_PLANS: Record<string, { priceId: string; amount: number; name: string; disputes: number }> = {
-  basic_monthly: {
-    priceId: process.env.STRIPE_BASIC_SUB_PRICE_ID || "price_basic_sub",
-    amount: 4900,
-    name: "Basic Monthly",
-    disputes: 3,
-  },
-  standard_monthly: {
-    priceId: process.env.STRIPE_STANDARD_SUB_PRICE_ID || "price_standard_sub",
-    amount: 9900,
-    name: "Standard Monthly",
-    disputes: 7,
-  },
-  premium_monthly: {
-    priceId: process.env.STRIPE_PREMIUM_SUB_PRICE_ID || "price_premium_sub",
-    amount: 14900,
-    name: "Premium Monthly",
-    disputes: 15,
-  },
-};
-
 export function isConfiguredStripePriceId(priceId: string) {
-  return priceId.startsWith("price_");
+  return priceId.startsWith("price_")
+    && !["price_basic", "price_standard", "price_premium"].includes(priceId);
 }
 
 export function getDisputePackage(packageKey: string) {
   return DISPUTE_PACKAGES[packageKey as keyof typeof DISPUTE_PACKAGES] || null;
 }
 
-export function getSubscriptionPlan(planKey: string) {
-  return SUBSCRIPTION_PLANS[planKey as keyof typeof SUBSCRIPTION_PLANS] || null;
+export async function getSubscriptionPlan(planKey: string) {
+  return getConfiguredSubscriptionPlan(planKey);
 }
 
 export function findDisputePackageByPriceId(priceId?: string | null) {
@@ -67,7 +48,6 @@ export function findDisputePackageByPriceId(priceId?: string | null) {
   return Object.entries(DISPUTE_PACKAGES).find(([, value]) => value.priceId === priceId) || null;
 }
 
-export function findSubscriptionPlanByPriceId(priceId?: string | null) {
-  if (!priceId) return null;
-  return Object.entries(SUBSCRIPTION_PLANS).find(([, value]) => value.priceId === priceId) || null;
+export async function findSubscriptionPlanByPriceId(priceId?: string | null) {
+  return findConfiguredSubscriptionPlanByPriceId(priceId);
 }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { recordCreditChange } from "@/lib/credits";
 import {
   findSubscriptionPlanByPriceId,
+  getSubscriptionPlan,
   stripe,
 } from "@/lib/stripe";
 
@@ -120,10 +121,8 @@ export async function POST(request: Request) {
         if (!client) break;
 
         const priceId = invoice.lines?.data?.[0]?.price?.id || null;
-        const planEntry = findSubscriptionPlanByPriceId(priceId) || (client.subscriptionPlan ? [client.subscriptionPlan, null] : null);
-        const planKey = Array.isArray(planEntry) ? planEntry[0] : null;
-        const plan = planKey ? findSubscriptionPlanByPriceId(priceId)?.[1] || null : null;
-        const subscriptionCredits = plan?.disputes || 0;
+        const matchedPlan = (await findSubscriptionPlanByPriceId(priceId)) || (client.subscriptionPlan ? await getSubscriptionPlan(client.subscriptionPlan) : null);
+        const subscriptionCredits = matchedPlan?.disputes || 0;
 
         await prisma.$transaction(async (tx) => {
           await tx.invoice.upsert({
@@ -151,7 +150,7 @@ export async function POST(request: Request) {
               amount: subscriptionCredits,
               type: "credit",
               source: "SUBSCRIPTION_RENEWAL",
-              description: `Subscription renewal credits for ${planKey || client.subscriptionPlan || "monthly plan"}`,
+              description: `Subscription renewal credits for ${matchedPlan?.key || client.subscriptionPlan || "subscription plan"}`,
               stripeEventId: event.id,
               stripeInvoiceId: invoice.id,
             });
@@ -161,7 +160,7 @@ export async function POST(request: Request) {
             where: { id: client.id },
             data: {
               subscriptionStatus: "active",
-              subscriptionPlan: planKey || client.subscriptionPlan,
+              subscriptionPlan: matchedPlan?.key || client.subscriptionPlan,
             },
           });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/access-control";
 import { getErrorMessage } from "@/lib/errors";
 import { getLlmStatus } from "@/lib/llm";
+import { formatUsdFromCents, getPricingPlans, updatePricingPlans } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 import { getReportProviderMode, isRealProviderConfigured } from "@/lib/report-provider";
 import { buildPublicUrl } from "@/lib/url";
@@ -57,9 +58,10 @@ export async function GET(request: NextRequest) {
     }
 
     const llmStatus = getLlmStatus();
-    const [lastAutomationRun, proxyStatus] = await Promise.all([
+    const [lastAutomationRun, proxyStatus, pricingPlans] = await Promise.all([
       prisma.automationRun.findFirst({ orderBy: { startedAt: "desc" } }),
       getProxyStatus(),
+      getPricingPlans(),
     ]);
 
     return NextResponse.json({
@@ -77,6 +79,22 @@ export async function GET(request: NextRequest) {
         proxyStatus,
         resendConfigured: Boolean(process.env.RESEND_API_KEY),
         reportProviderConfigured: isRealProviderConfigured(),
+      },
+      pricing: {
+        monthlyPlans: pricingPlans.filter((plan) => plan.interval === "month").map((plan) => ({
+          key: plan.key,
+          name: plan.name,
+          amountCents: plan.amountCents,
+          displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
+          disputes: plan.disputes,
+        })),
+        yearlyPlans: pricingPlans.filter((plan) => plan.interval === "year").map((plan) => ({
+          key: plan.key,
+          name: plan.name,
+          amountCents: plan.amountCents,
+          displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
+          disputes: plan.disputes,
+        })),
       },
       automation: {
         reportPullMode: getReportProviderMode(),
@@ -107,19 +125,41 @@ export async function PATCH(request: NextRequest) {
       address?: string | null;
       phone?: string | null;
       plan?: string;
+      pricing?: Array<{ key: string; amountCents: number }>;
     };
 
-    const updated = await prisma.business.update({
-      where: { id: business.id },
-      data: {
-        name: body.name?.trim() || business.name,
-        address: body.address?.trim() || null,
-        phone: body.phone?.trim() || null,
-        plan: body.plan?.trim() || business.plan,
+    const [updatedBusiness, updatedPricingPlans] = await Promise.all([
+      prisma.business.update({
+        where: { id: business.id },
+        data: {
+          name: body.name?.trim() || business.name,
+          address: body.address?.trim() || null,
+          phone: body.phone?.trim() || null,
+          plan: body.plan?.trim() || business.plan,
+        },
+      }),
+      body.pricing?.length ? updatePricingPlans(body.pricing) : getPricingPlans(),
+    ]);
+
+    return NextResponse.json({
+      business: updatedBusiness,
+      pricing: {
+        monthlyPlans: updatedPricingPlans.filter((plan) => plan.interval === "month").map((plan) => ({
+          key: plan.key,
+          name: plan.name,
+          amountCents: plan.amountCents,
+          displayPrice: `${formatUsdFromCents(plan.amountCents)}/mo`,
+          disputes: plan.disputes,
+        })),
+        yearlyPlans: updatedPricingPlans.filter((plan) => plan.interval === "year").map((plan) => ({
+          key: plan.key,
+          name: plan.name,
+          amountCents: plan.amountCents,
+          displayPrice: `${formatUsdFromCents(plan.amountCents)}/yr`,
+          disputes: plan.disputes,
+        })),
       },
     });
-
-    return NextResponse.json({ business: updated });
   } catch (error: unknown) {
     console.error("Update settings error:", error);
     const message = getErrorMessage(error, "Failed to update settings");
