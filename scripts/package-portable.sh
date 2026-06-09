@@ -12,7 +12,7 @@ ZIP_PATH="$ROOT_DIR/dist/${APP_NAME}-${VERSION}-portable.zip"
 SHA_PATH="$ROOT_DIR/dist/${APP_NAME}-${VERSION}-SHA256SUMS.txt"
 
 rm -rf "$ROOT_DIR/dist"
-mkdir -p "$BUNDLE_DIR/.next" "$BUNDLE_DIR/scripts" "$BUNDLE_DIR/prisma"
+mkdir -p "$BUNDLE_DIR/.next" "$BUNDLE_DIR/scripts" "$BUNDLE_DIR/prisma" "$BUNDLE_DIR/ops/systemd"
 
 npx prisma generate
 npx prisma db push
@@ -30,8 +30,9 @@ if [[ -d public ]]; then cp -R public "$BUNDLE_DIR/public"; fi
 
 cp README.md LICENSE .env.example package.json "$BUNDLE_DIR/"
 cp prisma/schema.prisma prisma/seed.js "$BUNDLE_DIR/prisma/"
-cp scripts/run-portable.sh scripts/install-portable.sh "$BUNDLE_DIR/scripts/"
-chmod +x "$BUNDLE_DIR/scripts/run-portable.sh" "$BUNDLE_DIR/scripts/install-portable.sh"
+cp ops/systemd/clearcredit-portable.service "$BUNDLE_DIR/ops/systemd/"
+cp scripts/run-portable.sh scripts/install-portable.sh scripts/install-portable-service.sh "$BUNDLE_DIR/scripts/"
+chmod +x "$BUNDLE_DIR/scripts/run-portable.sh" "$BUNDLE_DIR/scripts/install-portable.sh" "$BUNDLE_DIR/scripts/install-portable-service.sh"
 printf '%s\n' "$VERSION" > "$BUNDLE_DIR/VERSION"
 
 TAR_NAME="$(basename "$TAR_PATH")"
