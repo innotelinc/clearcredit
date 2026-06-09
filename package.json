@@ -30,6 +30,7 @@
     "start": "next start",
     "start:portable": "node .next/standalone/server.js",
     "package:portable": "bash scripts/package-portable.sh",
+    "assets:repo": "node scripts/generate-repo-assets.mjs",
     "lint": "eslint",
     "test": "vitest run",
     "seed:admin": "node prisma/seed.js"

@@ -1,17 +1,61 @@
-<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1020"/>
+      <stop offset="0.55" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
     </linearGradient>
+    <linearGradient id="card" x1="140" y1="110" x2="1030" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#111C35"/>
+    </linearGradient>
+    <linearGradient id="pill" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1200" height="630" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="32" flood-color="#020617" flood-opacity="0.5"/>
+    </filter>
   </defs>
+
   <rect width="1200" height="630" fill="url(#bg)"/>
-  <rect x="72" y="72" width="1056" height="486" rx="28" fill="#0b1220" stroke="#334155"/>
-  <text x="120" y="190" fill="#e2e8f0" font-family="Arial, sans-serif" font-size="72" font-weight="700">ClearCredit</text>
-  <text x="120" y="250" fill="#93c5fd" font-family="Arial, sans-serif" font-size="28">AI-assisted credit repair operations platform</text>
-  <text x="120" y="330" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="24">• Client and admin dashboards</text>
-  <text x="120" y="372" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="24">• Credit report upload → AI dispute generation</text>
-  <text x="120" y="414" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="24">• Stripe billing, contracts, settings, and workflow automation</text>
-  <rect x="120" y="468" width="220" height="52" rx="14" fill="#2563eb"/>
-  <text x="160" y="502" fill="#ffffff" font-family="Arial, sans-serif" font-size="24" font-weight="700">subscribe.innotel.us</text>
+  <circle cx="1020" cy="102" r="220" fill="#38BDF8" fill-opacity="0.08"/>
+  <circle cx="1140" cy="512" r="180" fill="#60A5FA" fill-opacity="0.10"/>
+  <circle cx="120" cy="590" r="180" fill="#1D4ED8" fill-opacity="0.14"/>
+
+  <g filter="url(#shadow)">
+    <rect x="70" y="64" width="1060" height="502" rx="30" fill="url(#card)" stroke="#334155"/>
+  </g>
+
+  <rect x="118" y="114" width="146" height="36" rx="18" fill="#0B1220" stroke="#1E293B"/>
+  <circle cx="142" cy="132" r="6" fill="#22C55E"/>
+  <text x="158" y="139" fill="#C7D2FE" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700">PUBLIC REPO</text>
+
+  <text x="118" y="220" fill="#F8FAFC" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="800">ClearCredit</text>
+  <text x="118" y="270" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600">AI-powered credit repair and dispute automation</text>
+
+  <text x="118" y="338" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="24">Next.js standalone bundle • Stripe billing • Admin-managed pricing</text>
+  <text x="118" y="378" fill="#CBD5E1" font-family="Arial, Helvetica, sans-serif" font-size="24">Portable deployment scripts • Local/OpenRouter LLM backends • Prisma</text>
+
+  <g>
+    <rect x="118" y="432" width="246" height="54" rx="15" fill="url(#pill)"/>
+    <text x="145" y="466" fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800">github.com/innotelinc</text>
+  </g>
+
+  <g>
+    <rect x="388" y="432" width="220" height="54" rx="15" fill="#0B1220" stroke="#334155"/>
+    <text x="416" y="466" fill="#E2E8F0" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">Version 0.2.0</text>
+  </g>
+
+  <g>
+    <rect x="770" y="156" width="268" height="280" rx="24" fill="#081122" stroke="#1E293B"/>
+    <rect x="802" y="192" width="204" height="16" rx="8" fill="#1D4ED8" fill-opacity="0.9"/>
+    <rect x="802" y="228" width="164" height="14" rx="7" fill="#334155"/>
+    <rect x="802" y="258" width="188" height="14" rx="7" fill="#334155"/>
+    <rect x="802" y="288" width="142" height="14" rx="7" fill="#334155"/>
+    <rect x="802" y="338" width="88" height="66" rx="16" fill="#2563EB" fill-opacity="0.16" stroke="#3B82F6"/>
+    <rect x="918" y="338" width="88" height="66" rx="16" fill="#38BDF8" fill-opacity="0.16" stroke="#38BDF8"/>
+    <text x="816" y="375" fill="#93C5FD" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800">API</text>
+    <text x="935" y="375" fill="#67E8F9" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800">LLM</text>
+  </g>
 </svg>

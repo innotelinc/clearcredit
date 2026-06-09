@@ -1,0 +1,17 @@
+[Unit]
+Description=ClearCredit portable Next.js app
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__INSTALL_DIR__/scripts/run-portable.sh
+Restart=on-failure
+RestartSec=5
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+
+[Install]
+WantedBy=multi-user.target

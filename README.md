@@ -1,5 +1,10 @@
 # ClearCredit
 
+![Release](./public/badges/release.svg)
+![Portable](./public/badges/portable.svg)
+![Stack](./public/badges/stack.svg)
+![LLM](./public/badges/llm.svg)
+
 AI-powered credit repair and dispute automation built with Next.js, Prisma, Stripe, and configurable LLM backends. ClearCredit now supports an admin-managed pricing catalog for one-time packages plus monthly/yearly subscriptions, and it can be shipped as a portable standalone bundle (`.zip` or `.tar.gz`).
 
 ## Highlights
