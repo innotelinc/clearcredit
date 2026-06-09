@@ -29,16 +29,19 @@ interface ClientData {
   invoices: Invoice[];
 }
 
+interface PublicPlan {
+  key: string;
+  name: string;
+  price: string;
+  priceSuffix: string;
+  amountCents: number;
+  disputes: number;
+}
+
 const packages = [
   { key: "basic", name: "Basic", price: "$149", credits: 3 },
   { key: "standard", name: "Standard", price: "$299", credits: 7 },
   { key: "premium", name: "Premium", price: "$499", credits: 15 },
-];
-
-const subscriptions = [
-  { key: "basic_monthly", name: "Basic Monthly", price: "$49/mo", credits: 3 },
-  { key: "standard_monthly", name: "Standard Monthly", price: "$99/mo", credits: 7 },
-  { key: "premium_monthly", name: "Premium Monthly", price: "$149/mo", credits: 15 },
 ];
 
 export default function ClientBillingPage() {
@@ -47,14 +50,20 @@ export default function ClientBillingPage() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [monthlyPlans, setMonthlyPlans] = useState<PublicPlan[]>([]);
+  const [yearlyPlans, setYearlyPlans] = useState<PublicPlan[]>([]);
 
   useEffect(() => {
-    fetch("/api/me")
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.client) {
-          setClient(data.client);
+    Promise.all([
+      fetch("/api/me").then((response) => response.json()),
+      fetch("/api/pricing").then((response) => response.json()),
+    ])
+      .then(([meData, pricingData]) => {
+        if (meData.client) {
+          setClient(meData.client);
         }
+        setMonthlyPlans(pricingData.monthlyPlans || []);
+        setYearlyPlans(pricingData.yearlyPlans || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -120,6 +129,31 @@ export default function ClientBillingPage() {
 
   const credits = client?.disputeCredits ?? 0;
 
+  function renderSubscriptionCard(title: string, description: string, plans: PublicPlan[], badgeSuffix: string) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3">
+          {plans.map((plan) => (
+            <div key={plan.key} className="rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold">{plan.name}</p>
+                <Badge variant="outline">{plan.disputes}{badgeSuffix}</Badge>
+              </div>
+              <p className="mt-2 text-2xl font-bold">{plan.price}{plan.priceSuffix}</p>
+              <Button className="mt-4 w-full" variant="outline" onClick={() => startCheckout("subscription", plan.key)} isLoading={checkoutLoading === `subscription:${plan.key}`}>
+                Start plan
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <ClientHeader />
@@ -145,13 +179,13 @@ export default function ClientBillingPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-6 xl:grid-cols-3">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5 text-primary" />One-time dispute packages</CardTitle>
               <CardDescription>Best when you want to top up credits immediately.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
+            <CardContent className="grid gap-4 md:grid-cols-3 xl:grid-cols-1">
               {packages.map((pkg) => (
                 <div key={pkg.key} className="rounded-xl border border-border p-4">
                   <div className="flex items-center justify-between">
@@ -167,26 +201,8 @@ export default function ClientBillingPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Monthly automation plans</CardTitle>
-              <CardDescription>Recurring billing with credits added every billing cycle.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              {subscriptions.map((plan) => (
-                <div key={plan.key} className="rounded-xl border border-border p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{plan.name}</p>
-                    <Badge variant="outline">{plan.credits}/mo</Badge>
-                  </div>
-                  <p className="mt-2 text-2xl font-bold">{plan.price}</p>
-                  <Button className="mt-4 w-full" variant="secondary" onClick={() => startCheckout("subscription", plan.key)} isLoading={checkoutLoading === `subscription:${plan.key}`}>
-                    Start plan
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {renderSubscriptionCard("Monthly automation plans", "Recurring monthly billing with credits added every month.", monthlyPlans, "/mo")}
+          {renderSubscriptionCard("Yearly automation plans", "Lower-touch annual billing with credits added every year.", yearlyPlans, "/yr")}
         </div>
 
         <Card>

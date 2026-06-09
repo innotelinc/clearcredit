@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Bot, Building2, CheckCircle2, CreditCard, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
+import { Activity, Bot, Building2, CheckCircle2, CreditCard, DollarSign, Mail, Play, Save, Sparkles, Stethoscope } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+
+interface PricingPlanView {
+  key: string;
+  name: string;
+  amountCents: number;
+  displayPrice: string;
+  disputes: number;
+}
 
 interface SettingsResponse {
   business: {
@@ -35,6 +43,10 @@ interface SettingsResponse {
     };
     resendConfigured: boolean;
     reportProviderConfigured: boolean;
+  };
+  pricing: {
+    monthlyPlans: PricingPlanView[];
+    yearlyPlans: PricingPlanView[];
   };
   automation: {
     reportPullMode: string;
@@ -64,11 +76,28 @@ export default function AdminSettingsPage() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPricing, setSavingPricing] = useState(false);
   const [runningAutomation, setRunningAutomation] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
   const [message, setMessage] = useState("");
+  const [pricingMessage, setPricingMessage] = useState("");
   const [llmTestMessage, setLlmTestMessage] = useState("");
   const [form, setForm] = useState({ name: "", address: "", phone: "", plan: "STARTER" });
+  const [pricingForm, setPricingForm] = useState<Record<string, string>>({});
+
+  function syncForms(payload: SettingsResponse) {
+    setForm({
+      name: payload.business.name || "",
+      address: payload.business.address || "",
+      phone: payload.business.phone || "",
+      plan: payload.business.plan || "STARTER",
+    });
+    const nextPricing: Record<string, string> = {};
+    for (const plan of [...payload.pricing.monthlyPlans, ...payload.pricing.yearlyPlans]) {
+      nextPricing[plan.key] = (plan.amountCents / 100).toString();
+    }
+    setPricingForm(nextPricing);
+  }
 
   async function fetchSettingsData() {
     const res = await fetch("/api/settings");
@@ -81,12 +110,7 @@ export default function AdminSettingsPage() {
     try {
       const payload = await fetchSettingsData();
       setData(payload);
-      setForm({
-        name: payload.business.name || "",
-        address: payload.business.address || "",
-        phone: payload.business.phone || "",
-        plan: payload.business.plan || "STARTER",
-      });
+      syncForms(payload);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load settings");
     } finally {
@@ -95,28 +119,23 @@ export default function AdminSettingsPage() {
   }
 
   useEffect(() => {
-    let active = true;
+    let cancelled = false;
 
-    void fetchSettingsData()
+    fetchSettingsData()
       .then((payload) => {
-        if (!active) return;
+        if (cancelled) return;
         setData(payload);
-        setForm({
-          name: payload.business.name || "",
-          address: payload.business.address || "",
-          phone: payload.business.phone || "",
-          plan: payload.business.plan || "STARTER",
-        });
+        syncForms(payload);
         setLoading(false);
       })
-      .catch((error: unknown) => {
-        if (!active) return;
+      .catch((error) => {
+        if (cancelled) return;
         setMessage(error instanceof Error ? error.message : "Failed to load settings");
         setLoading(false);
       });
 
     return () => {
-      active = false;
+      cancelled = true;
     };
   }, []);
 
@@ -137,6 +156,33 @@ export default function AdminSettingsPage() {
       setMessage(error instanceof Error ? error.message : "Failed to save settings");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function savePricing() {
+    setSavingPricing(true);
+    setPricingMessage("");
+    try {
+      const pricingPayload = Object.entries(pricingForm).map(([key, value]) => ({
+        key,
+        amountCents: Math.round(Number.parseFloat(value || "0") * 100),
+      }));
+      if (pricingPayload.some((plan) => !Number.isFinite(plan.amountCents) || plan.amountCents <= 0)) {
+        throw new Error("All monthly and yearly plan prices must be valid positive amounts.");
+      }
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pricing: pricingPayload }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || "Failed to save pricing");
+      setData((current) => (current ? { ...current, pricing: payload.pricing } : current));
+      setPricingMessage("Pricing updated. Signup, billing, and checkout now use the new monthly/yearly amounts.");
+    } catch (error) {
+      setPricingMessage(error instanceof Error ? error.message : "Failed to save pricing");
+    } finally {
+      setSavingPricing(false);
     }
   }
 
@@ -183,6 +229,37 @@ export default function AdminSettingsPage() {
       ]
     : [];
 
+  function renderPricingGrid(title: string, plans: PricingPlanView[], suffix: string) {
+    return (
+      <div>
+        <h3 className="mb-4 text-base font-semibold">{title}</h3>
+        <div className="grid gap-4 md:grid-cols-3">
+          {plans.map((plan) => (
+            <div key={plan.key} className="rounded-lg border p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium">{plan.name}</p>
+                  <p className="text-xs text-muted-foreground">{plan.disputes} disputes per {suffix === "/yr" ? "year" : "month"}</p>
+                </div>
+                <Badge variant="outline">{plan.displayPrice}</Badge>
+              </div>
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">Price ({suffix})</label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={pricingForm[plan.key] ?? (plan.amountCents / 100).toString()}
+                  onChange={(e) => setPricingForm((current) => ({ ...current, [plan.key]: e.target.value }))}
+                  inputMode="decimal"
+                  className="pl-9"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
@@ -191,7 +268,7 @@ export default function AdminSettingsPage() {
         <main className="space-y-8 p-8">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Manage business profile, integrations, and automation status.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Manage business profile, integrations, automation status, and live plan pricing.</p>
           </div>
 
           {loading ? (
@@ -211,6 +288,23 @@ export default function AdminSettingsPage() {
                   <div className="md:col-span-2 flex items-center gap-3"><Button onClick={saveSettings} isLoading={saving}><Save className="h-4 w-4" />Save settings</Button>{message ? <p className="text-sm text-muted-foreground">{message}</p> : null}</div>
                 </CardContent>
               </Card>
+
+              {data ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Subscription Pricing</CardTitle>
+                    <CardDescription>Edit the live monthly and yearly plan pricing used by signup, billing, and Stripe checkout.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {renderPricingGrid("Monthly plans", data.pricing.monthlyPlans, "/mo")}
+                    {renderPricingGrid("Yearly plans", data.pricing.yearlyPlans, "/yr")}
+                    <div className="flex items-center gap-3">
+                      <Button onClick={savePricing} isLoading={savingPricing}><Save className="h-4 w-4" />Save pricing</Button>
+                      {pricingMessage ? <p className="text-sm text-muted-foreground">{pricingMessage}</p> : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
 
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
                 {integrationCards.map((item) => (

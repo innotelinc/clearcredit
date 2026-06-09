@@ -227,3 +227,16 @@ model AutomationRun {
   startedAt   DateTime @default(now())
   completedAt DateTime?
 }
+
+model PricingPlan {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  name         String
+  interval     String
+  amountCents  Int
+  disputes     Int
+  stripePriceId String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

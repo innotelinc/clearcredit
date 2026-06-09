@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+import { formatUsdFromCents, getSubscriptionPlansByInterval } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 
 async function fetchStats() {
@@ -115,38 +116,21 @@ const packages = [
   },
 ];
 
-const monthlyPlans = [
-  {
-    name: "Basic Monthly",
-    price: "$49",
-    description: "Recurring entry plan for steady monthly dispute work.",
-    billingLabel: "/mo",
-    features: ["3 disputes per month", "3 AI-generated dispute letters / month", "FCRA-compliant formatting", "Email support", "Auto-renewing credits"],
-    cta: "Start Monthly Plan",
-    highlighted: false,
-  },
-  {
-    name: "Standard Monthly",
-    price: "$99",
-    description: "Balanced monthly plan for active clients who need ongoing progress.",
-    billingLabel: "/mo",
-    features: ["7 disputes per month", "7 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Progress tracking", "Auto-renewing credits"],
-    cta: "Choose Standard Monthly",
-    highlighted: true,
-  },
-  {
-    name: "Premium Monthly",
-    price: "$149",
-    description: "Maximum recurring coverage with dedicated support and monthly renewals.",
-    billingLabel: "/mo",
-    features: ["15 disputes per month", "15 AI-generated dispute letters / month", "FCRA-compliant formatting", "Priority support", "Dedicated specialist", "Auto-renewing credits"],
-    cta: "Choose Premium Monthly",
-    highlighted: false,
-  },
+const buildSubscriptionFeatures = (disputes: number, interval: "month" | "year") => [
+  `${disputes} disputes per ${interval === "year" ? "year" : "month"}`,
+  `${disputes} AI-generated dispute letters / ${interval === "year" ? "year" : "month"}`,
+  "FCRA-compliant formatting",
+  disputes >= 7 ? "Priority support" : "Email support",
+  disputes >= 7 ? "Progress tracking" : "Guided onboarding",
+  disputes >= 15 ? "Dedicated specialist" : interval === "year" ? "Annual billing" : "Auto-renewing credits",
 ];
 
 export default async function HomePage() {
-  const stats = await fetchStats();
+  const [stats, monthlyPlans, yearlyPlans] = await Promise.all([
+    fetchStats(),
+    getSubscriptionPlansByInterval("month"),
+    getSubscriptionPlansByInterval("year"),
+  ]);
   const resolved = stats?.resolvedDisputes ?? 0;
   const clients = stats?.totalClients ?? 0;
   const revenue = stats?.totalRevenue ?? 0;
@@ -224,7 +208,7 @@ export default async function HomePage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-success" />
-                  One-time or monthly plans
+                  One-time, monthly, or yearly plans
                 </div>
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-success" />
@@ -382,7 +366,7 @@ export default async function HomePage() {
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold tracking-tight md:text-4xl">Simple, Transparent Pricing</h2>
             <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Choose a one-time dispute package or a monthly subscription. Every option includes AI-generated FCRA dispute letters.
+              Choose a one-time dispute package or a monthly/yearly subscription. Every option includes AI-generated FCRA dispute letters.
             </p>
           </div>
 
@@ -439,29 +423,29 @@ export default async function HomePage() {
                 <p className="mt-2 text-sm text-muted-foreground">Auto-renewing monthly dispute credits for ongoing credit repair.</p>
               </div>
               <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
-                {monthlyPlans.map((plan) => (
+                {monthlyPlans.map((plan, index) => (
                   <Card
-                    key={plan.name}
+                    key={plan.key}
                     className={`relative flex flex-col ${
-                      plan.highlighted
+                      index === 1
                         ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
                         : "border-border/60"
                     }`}
                   >
-                    {plan.highlighted && (
+                    {index === 1 && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
                         Best Subscription Value
                       </div>
                     )}
                     <CardContent className="flex flex-1 flex-col p-6">
                       <h3 className="text-lg font-semibold">{plan.name}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Auto-renewing monthly credits for active credit repair workflows.</p>
                       <div className="mt-4 flex items-baseline">
-                        <span className="text-4xl font-bold">{plan.price}</span>
-                        <span className="ml-1 text-sm text-muted-foreground">{plan.billingLabel}</span>
+                        <span className="text-4xl font-bold">{formatUsdFromCents(plan.amountCents)}</span>
+                        <span className="ml-1 text-sm text-muted-foreground">/mo</span>
                       </div>
                       <ul className="mt-6 space-y-3 flex-1">
-                        {plan.features.map((f) => (
+                        {buildSubscriptionFeatures(plan.disputes, "month").map((f) => (
                           <li key={f} className="flex items-start gap-2 text-sm">
                             <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
                             {f}
@@ -469,8 +453,54 @@ export default async function HomePage() {
                         ))}
                       </ul>
                       <Link href="/signup" className="mt-6">
-                        <Button variant={plan.highlighted ? "primary" : "outline"} className="w-full">
-                          {plan.cta}
+                        <Button variant={index === 1 ? "primary" : "outline"} className="w-full">
+                          {index === 1 ? "Choose Standard Monthly" : "Start Monthly Plan"}
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-6 text-center">
+                <h3 className="text-2xl font-semibold tracking-tight">Yearly Subscriptions</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Commit annually and keep the same dispute credit capacity on a yearly billing cycle.</p>
+              </div>
+              <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
+                {yearlyPlans.map((plan, index) => (
+                  <Card
+                    key={plan.key}
+                    className={`relative flex flex-col ${
+                      index === 1
+                        ? "border-primary shadow-xl shadow-primary/10 scale-105 z-10"
+                        : "border-border/60"
+                    }`}
+                  >
+                    {index === 1 && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-white">
+                        Best Annual Value
+                      </div>
+                    )}
+                    <CardContent className="flex flex-1 flex-col p-6">
+                      <h3 className="text-lg font-semibold">{plan.name}</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">Annual billing for longer-running credit repair programs.</p>
+                      <div className="mt-4 flex items-baseline">
+                        <span className="text-4xl font-bold">{formatUsdFromCents(plan.amountCents)}</span>
+                        <span className="ml-1 text-sm text-muted-foreground">/yr</span>
+                      </div>
+                      <ul className="mt-6 space-y-3 flex-1">
+                        {buildSubscriptionFeatures(plan.disputes, "year").map((f) => (
+                          <li key={f} className="flex items-start gap-2 text-sm">
+                            <CheckCircle2 className="h-4 w-4 text-success mt-0.5 shrink-0" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <Link href="/signup" className="mt-6">
+                        <Button variant={index === 1 ? "primary" : "outline"} className="w-full">
+                          {index === 1 ? "Choose Standard Yearly" : "Start Yearly Plan"}
                         </Button>
                       </Link>
                     </CardContent>

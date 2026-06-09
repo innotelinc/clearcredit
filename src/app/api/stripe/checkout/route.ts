@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pkg = body.package ? getDisputePackage(body.package) : null;
-    const plan = body.plan ? getSubscriptionPlan(body.plan) : null;
+    const plan = body.plan ? await getSubscriptionPlan(body.plan) : null;
 
     if (!pkg && !plan) {
       return NextResponse.json({ error: "A valid package or subscription plan is required" }, { status: 400 });
@@ -72,22 +72,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unable to resolve Stripe product" }, { status: 400 });
     }
 
-    const lineItem = isConfiguredStripePriceId(selected.priceId)
-      ? { price: selected.priceId, quantity: 1 }
-      : {
-          price_data: {
-            currency: "usd",
-            unit_amount: selected.amount,
-            product_data: {
-              name: selected.name,
-              description: isSubscription
-                ? `${selected.disputes} dispute credits per billing cycle`
-                : `${selected.disputes} dispute credits`,
+    const lineItem = isSubscription && plan
+      ? plan.stripePriceId && isConfiguredStripePriceId(plan.stripePriceId)
+        ? { price: plan.stripePriceId, quantity: 1 }
+        : {
+            price_data: {
+              currency: "usd",
+              unit_amount: plan.amountCents,
+              product_data: {
+                name: plan.name,
+                description: `${plan.disputes} dispute credits per ${plan.interval === "year" ? "year" : "month"}`,
+              },
+              recurring: { interval: plan.interval === "year" ? "year" as const : "month" as const },
             },
-            recurring: isSubscription ? { interval: "month" as const } : undefined,
-          },
-          quantity: 1,
-        };
+            quantity: 1,
+          }
+      : pkg && isConfiguredStripePriceId(pkg.priceId)
+        ? { price: pkg.priceId, quantity: 1 }
+        : {
+            price_data: {
+              currency: "usd",
+              unit_amount: pkg?.amount || 0,
+              product_data: {
+                name: pkg?.name || "Dispute package",
+                description: `${pkg?.disputes || 0} dispute credits`,
+              },
+            },
+            quantity: 1,
+          };
 
     const session = await stripe.checkout.sessions.create({
       mode: isSubscription ? "subscription" : "payment",
